@@ -1,0 +1,8 @@
+{
+  "sessionId": "session-uuid",
+  "localCartId": "cart-uuid",
+  "simulationId": "simulation-uuid",
+  "menuVersion": 42,
+  "availabilityVersion": 19,
+  "items": []
+}

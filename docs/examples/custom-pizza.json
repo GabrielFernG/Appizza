@@ -1,0 +1,23 @@
+{
+  "productId": "monte-sua-pizza",
+  "quantity": 1,
+  "pizza": {
+    "sizeId": "large",
+    "fractions": [
+      {
+        "position": 1,
+        "flavorId": "calabresa"
+      },
+      {
+        "position": 2,
+        "customFlavor": {
+          "ingredientIds": [
+            "mozzarella",
+            "ham",
+            "corn"
+          ]
+        }
+      }
+    ]
+  }
+}

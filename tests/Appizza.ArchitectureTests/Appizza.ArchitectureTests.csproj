@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BuildingBlocks\Appizza.BuildingBlocks\Appizza.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Auditing\Appizza.Modules.Auditing.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Catalog\Appizza.Modules.Catalog.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Communications\Appizza.Modules.Communications.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Devices\Appizza.Modules.Devices.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Establishments\Appizza.Modules.Establishments.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Identity\Appizza.Modules.Identity.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Integration\Appizza.Modules.Integration.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Kitchen\Appizza.Modules.Kitchen.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Media\Appizza.Modules.Media.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Operations\Appizza.Modules.Operations.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Ordering\Appizza.Modules.Ordering.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Payments\Appizza.Modules.Payments.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Promotions\Appizza.Modules.Promotions.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Reporting\Appizza.Modules.Reporting.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Tables\Appizza.Modules.Tables.csproj" />
+  </ItemGroup>
+
+</Project>

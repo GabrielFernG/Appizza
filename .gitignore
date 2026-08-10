@@ -1,0 +1,17 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+.vscode/
+.dotnet-home/
+.nuget-packages/
+.env
+*.user
+*.suo
+TestResults/
+coverage/
+src/Web/Appizza.Operations/node_modules/
+src/Web/Appizza.Operations/dist/
+*.db
+*.db-shm
+*.db-wal

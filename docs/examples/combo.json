@@ -1,0 +1,27 @@
+{
+  "productId": "combo-familia",
+  "combo": {
+    "groups": [
+      {
+        "groupId": "pizza",
+        "selections": [
+          {
+            "productId": "calabresa",
+            "configuration": {
+              "sizeId": "large"
+            }
+          }
+        ]
+      },
+      {
+        "groupId": "drink",
+        "selections": [
+          {
+            "productId": "coca-cola",
+            "productVariantId": "2l"
+          }
+        ]
+      }
+    ]
+  }
+}

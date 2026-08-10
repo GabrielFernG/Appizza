@@ -1,0 +1,37 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Backend/">
+    <Project Path="src/Backend/Appizza.Api/Appizza.Api.csproj" />
+    <Project Path="src/Backend/Appizza.Worker/Appizza.Worker.csproj" />
+  </Folder>
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/Appizza.BuildingBlocks/Appizza.BuildingBlocks.csproj" />
+    <Project Path="src/BuildingBlocks/Appizza.Persistence/Appizza.Persistence.csproj" />
+  </Folder>
+  <Folder Name="/src/Clients/">
+    <Project Path="src/Clients/Appizza.Table/Appizza.Table.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/Appizza.Modules.Auditing/Appizza.Modules.Auditing.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Catalog/Appizza.Modules.Catalog.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Communications/Appizza.Modules.Communications.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Devices/Appizza.Modules.Devices.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Establishments/Appizza.Modules.Establishments.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Identity/Appizza.Modules.Identity.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Integration/Appizza.Modules.Integration.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Kitchen/Appizza.Modules.Kitchen.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Media/Appizza.Modules.Media.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Operations/Appizza.Modules.Operations.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Ordering/Appizza.Modules.Ordering.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Payments/Appizza.Modules.Payments.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Promotions/Appizza.Modules.Promotions.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Reporting/Appizza.Modules.Reporting.csproj" />
+    <Project Path="src/Modules/Appizza.Modules.Tables/Appizza.Modules.Tables.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Appizza.Api.IntegrationTests/Appizza.Api.IntegrationTests.csproj" />
+    <Project Path="tests/Appizza.ArchitectureTests/Appizza.ArchitectureTests.csproj" />
+    <Project Path="tests/Appizza.Infrastructure.IntegrationTests/Appizza.Infrastructure.IntegrationTests.csproj" />
+    <Project Path="tests/Appizza.UnitTests/Appizza.UnitTests.csproj" />
+  </Folder>
+</Solution>

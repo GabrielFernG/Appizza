@@ -1,0 +1,6 @@
+@Appizza.Api_HostAddress = http://localhost:5136
+
+GET {{Appizza.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

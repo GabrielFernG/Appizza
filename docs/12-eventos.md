@@ -1,0 +1,719 @@
+# 12 — Catálogo de Eventos
+
+Este documento define eventos de domínio, integração e notificações de UI.
+
+## 1. Regras globais
+
+Eventos representam fatos passados.
+
+Envelope padrão:
+
+```json
+{
+  "eventId": "uuid",
+  "eventType": "order-submitted",
+  "schemaVersion": 1,
+  "occurredAtUtc": "2026-08-09T15:00:00Z",
+  "establishmentId": "uuid",
+  "correlationId": "uuid",
+  "causationId": "uuid-or-null",
+  "actor": {
+    "userId": "uuid-or-null",
+    "deviceId": "uuid-or-null"
+  },
+  "data": {}
+}
+```
+
+Obrigatório:
+- `eventId`
+- `eventType`
+- `schemaVersion`
+- `occurredAtUtc`
+- `establishmentId`
+- `correlationId`
+
+Dados sensíveis não entram em eventos.
+
+## 2. Classes de evento
+
+### Domain Event
+Interno ao módulo.
+
+### Integration Event
+Contrato estável entre módulos. Quando crítico, passa por Outbox.
+
+### UI Notification
+Mensagem leve via SignalR. Nunca substitui leitura da API.
+
+---
+
+# 3. Sessões e Mesas
+
+## TableSessionOpened
+
+Produtor: Tables  
+Quando: criação bem-sucedida de nova sessão.  
+Outbox: sim.
+
+Payload:
+
+```json
+{
+  "tableSessionId": "uuid",
+  "diningTableId": "uuid",
+  "sessionNumber": "20260809-0018",
+  "openedAtUtc": "2026-08-09T15:00:00Z",
+  "openingMode": "automatic_on_first_order",
+  "openedByDeviceId": "uuid"
+}
+```
+
+Consumidores:
+- Ordering: disponibiliza contexto.
+- Reporting: ocupação.
+- Operations: mapa de mesas.
+- Notifications: SignalR.
+
+Idempotência:
+cada consumidor usa `eventId`.
+
+## TableClosingStarted
+
+Produtor: Tables  
+Outbox: sim.
+
+Efeitos:
+- impedir novos pedidos;
+- habilitar conta/pagamento;
+- notificar todos os tablets.
+
+Payload inclui `tableSessionId`, `diningTableId`, `initiatedByDeviceId`, `startedAtUtc`.
+
+## TableClosingCancelled
+
+Produtor: Tables  
+Outbox: sim.
+
+Pré-condição:
+nenhum pagamento aprovado e nenhuma regra financeira impeditiva.
+
+Efeito:
+sessão retorna a Open.
+
+## TableSessionReopened
+
+Produtor: Tables  
+Outbox: sim.
+
+Usado após pagamento parcial somente com autorização.
+
+Payload adicional:
+- `reopenedByUserId`
+- `approvedByUserId`
+- `reason`
+
+## TableSessionPaid
+
+Produtor: Tables/Payments orchestration  
+Outbox: sim.
+
+Significa `remainingAmount == 0`; não implica fechamento imediato.
+
+## TableSessionClosed
+
+Produtor: Tables  
+Outbox: sim.
+
+Consumidores:
+- Devices/Table UI: limpar sessão;
+- Reporting;
+- Operations;
+- Cleaning flow.
+
+## TableSessionTransferred
+
+Produtor: Tables  
+Outbox: sim.
+
+Payload:
+`previousTableId`, `newTableId`, `transferredByUserId`, `reason`.
+
+## TableCleaningRequested
+
+Produtor: Tables  
+Outbox: sim.
+
+Gerado quando `releaseMode = after_cleaning_confirmation`.
+
+## TableCleaningConfirmed
+
+Produtor: Tables  
+Outbox: sim.
+
+Payload inclui `confirmedByUserId`.
+
+## TableReleased
+
+Produtor: Tables  
+Outbox: sim.
+
+Significa mesa disponível para nova sessão.
+
+---
+
+# 4. Identificação
+
+## SessionCustomerIdentificationProvided
+
+Produtor: Tables  
+Outbox: não obrigatório.
+
+Nunca transportar CPF completo.
+
+Payload:
+
+```json
+{
+  "identificationId": "uuid",
+  "tableSessionId": "uuid",
+  "identificationType": "cpf",
+  "maskedValue": "***.***.***-09",
+  "purpose": "session_identification"
+}
+```
+
+## SessionCustomerIdentificationSkipped
+
+Produtor: Tables  
+Outbox: não.
+
+---
+
+# 5. Ordering
+
+## OrderSubmitted
+
+Produtor: Ordering  
+Outbox: obrigatório.
+
+Quando:
+pedido e itens persistidos, promoções aplicadas, snapshot criado e transação confirmada.
+
+Payload:
+
+```json
+{
+  "orderId": "uuid",
+  "tableSessionId": "uuid",
+  "orderNumber": 154,
+  "submittedAtUtc": "2026-08-09T15:10:00Z",
+  "subtotalAmount": 131.00,
+  "discountAmount": 5.00,
+  "totalAmount": 126.00,
+  "itemCount": 3,
+  "sourceDeviceId": "uuid"
+}
+```
+
+Consumidores:
+- Kitchen -> cria ProductionItems;
+- Tables -> atualiza projeção/conta;
+- Reporting;
+- Notifications.
+
+Não transportar configuração completa da pizza por evento; consumidores usam contratos/projeções apropriados.
+
+## OrderSubmissionRejected
+
+Produtor: Ordering  
+Outbox: não.
+
+Usado para telemetria/domínio quando submissão não passa validação. O erro HTTP continua sendo a resposta principal.
+
+## OrderChanged
+
+Produtor: Ordering  
+Outbox: sim.
+
+Payload:
+- orderId;
+- orderItemId;
+- previousVersion;
+- newVersion;
+- priceDifference;
+- approvedBy;
+- reason.
+
+## OrderCancelled
+
+Produtor: Ordering  
+Outbox: sim.
+
+Pouco comum; normalmente cancelamento é por item.
+
+---
+
+# 6. Requests de Item
+
+## OrderItemCancellationRequested
+Outbox: sim quando exige decisão humana.
+
+Payload:
+`requestId`, `orderItemId`, `tableSessionId`, `requiredApprovalLevel`, `reasonCode`.
+
+Consumidores:
+Kitchen/Operations/Notifications.
+
+## OrderItemCancellationApproved
+Outbox: sim.
+
+## OrderItemCancellationRejected
+Outbox: sim.
+
+## OrderItemCancelled
+Outbox: obrigatório.
+
+Consumidores:
+- Kitchen: encerrar produção;
+- Tables: recalcular conta;
+- Payments: avaliar impacto se pago;
+- Reporting;
+- Notifications.
+
+## OrderItemChangeRequested
+Outbox: sim quando exige aprovação.
+
+## OrderItemChangeApproved
+Outbox: sim.
+
+Inclui `productionAction = continue | restart`.
+
+## OrderItemChangeRejected
+Outbox: sim.
+
+## OrderItemChanged
+Outbox: obrigatório.
+
+Consumidores:
+Kitchen, Tables, Promotions/Ordering projection, Reporting, Notifications.
+
+---
+
+# 7. Promoções
+
+## PromotionApplied
+
+Produtor: Promotions/Ordering  
+Outbox: não obrigatório se persistido no mesmo bounded context; sim se outros módulos dependem.
+
+Payload:
+`promotionId`, `promotionVersionId`, `promotionApplicationId`, valores e affectedOrderItemIds.
+
+## PromotionActivated
+Outbox: sim.
+
+## PromotionPaused
+Outbox: sim.
+
+## PromotionExpired
+Outbox: sim.
+
+## PromotionUsageLimitReached
+Outbox: sim.
+
+## MenuRefreshRequired
+
+UI notification, não evento de domínio obrigatório.
+
+---
+
+# 8. Produção
+
+## ProductionItemCreated
+
+Produtor: Kitchen  
+Causa: OrderSubmitted.  
+Outbox: sim.
+
+Payload:
+`productionItemId`, `orderItemId`, `stationId`, `queuePosition`, `estimatedPreparationMinutes`.
+
+## ProductionItemAccepted
+Outbox: sim.
+
+## ProductionItemRejected
+Outbox: obrigatório.
+
+Pode levar ao cancelamento comercial do item.
+
+Payload inclui motivo público e interno por código/referência, nunca detalhe sensível.
+
+## ProductionItemPreparationStarted
+Outbox: sim.
+
+## ProductionItemReturnedToQueue
+Outbox: sim.
+
+Inclui `previousStatus` e `reasonCode`.
+
+## ProductionItemPaused
+Outbox: sim.
+
+## ProductionItemResumed
+Outbox: sim.
+
+## ProductionAttemptFailed
+Outbox: sim.
+
+Usado para queimado/erro operacional.
+
+## ProductionAttemptRestarted
+Outbox: sim.
+
+## ProductionItemReady
+Outbox: obrigatório.
+
+## ProductionItemSentToTable
+Outbox: obrigatório.
+
+Efeitos:
+- cria/ativa DeliveryConfirmation;
+- agenda auto confirmação;
+- notifica tablets.
+
+## ProductionItemDelivered
+Outbox: obrigatório.
+
+---
+
+# 9. Entrega
+
+## DeliveryConfirmationRequested
+
+Produtor: Kitchen  
+Outbox: sim.
+
+Payload:
+`deliveryConfirmationId`, `productionItemId`, `orderItemId`, `autoConfirmationDueAt`.
+
+## DeliveryConfirmedByCustomer
+Outbox: sim.
+
+## DeliveryConfirmedByWaiter
+Outbox: sim.
+
+## DeliveryAutoConfirmed
+Outbox: sim.
+
+## DeliveryContested
+Outbox: obrigatório.
+
+Consumidores:
+Operations -> occurrence;
+Kitchen -> alerta;
+Worker -> cancela auto-confirmação pendente;
+Notifications.
+
+## DeliveryAttemptRestarted
+Outbox: sim.
+
+## DeliveryIssueResolved
+Outbox: sim.
+
+---
+
+# 10. Disponibilidade
+
+## IngredientAvailabilityChanged
+
+Produtor: Catalog/Kitchen operations  
+Outbox: obrigatório.
+
+Payload:
+`ingredientId`, `isAvailable`, `reasonCode`, `changedByUserId`.
+
+Consumidores:
+Catalog projection, Menu/SignalR, Kitchen, Reporting.
+
+## ProductAvailabilityChanged
+Outbox: sim.
+
+## ProductVariantAvailabilityChanged
+Outbox: sim.
+
+## StationAvailabilityChanged
+Outbox: sim.
+
+## CatalogAvailabilityRecalculated
+Pode ser interno ou UI notification.
+
+---
+
+# 11. Payments
+
+## PaymentAttemptCreated
+
+Produtor: Payments  
+Outbox: sim.
+
+Payload:
+`paymentAttemptId`, `paymentId`, `tableSessionId`, `method`, `requestedAmount`, `reservedAmount`.
+
+## PaymentAttemptProcessing
+Outbox: não obrigatório.
+
+## PaymentAttemptApproved
+
+Outbox: obrigatório e crítico.
+
+Consumidores:
+- Tables -> saldo;
+- Reporting;
+- Notifications;
+- Ordering/Payments allocation projection.
+
+Aprovação repetida não pode reduzir saldo duas vezes.
+
+## PaymentAttemptDeclined
+Outbox: sim.
+
+## PaymentAttemptExpired
+Outbox: sim.
+
+## PaymentAttemptCancelled
+Outbox: sim.
+
+## PaymentAttemptStatusUnknown
+
+Outbox: obrigatório.
+
+Efeitos:
+- manter/bloquear reserva adequada;
+- abrir alerta;
+- agendar reconciliação;
+- impedir tentativa duplicada.
+
+## PaymentReconciled
+
+Outbox: obrigatório.
+
+Payload deve indicar `previousStatus`, `resolvedStatus`, `providerReference`.
+
+## CashPaymentRequested
+Outbox: sim.
+
+## CashPaymentConfirmed
+Outbox: obrigatório.
+
+## PaymentDuplicitySuspected
+Outbox: obrigatório.
+
+## PaymentDuplicityResolved
+Outbox: sim.
+
+## RefundRequested
+Outbox: sim.
+
+## RefundCompleted
+Outbox: obrigatório.
+
+## RefundFailed
+Outbox: sim.
+
+## ManualDiscountApplied
+Outbox: sim.
+
+## ComplimentaryItemGranted
+Outbox: sim.
+
+---
+
+# 12. Devices
+
+## DeviceRegistered
+Outbox: não obrigatório.
+
+## DeviceBoundToTable
+Outbox: sim.
+
+## DeviceReplaced
+Outbox: sim.
+
+## DeviceUnboundFromTable
+Outbox: sim.
+
+## DeviceConfigurationRevoked
+Outbox: obrigatório.
+
+Consumidor crítico: tablet, via SignalR/token validation.
+
+## DeviceBlocked
+Outbox: sim.
+
+## DeviceUnblocked
+Outbox: sim.
+
+## DeviceWentOffline
+Outbox: não necessariamente; pode ser evento operacional derivado.
+
+## DeviceCameOnline
+Outbox: não necessariamente.
+
+## DeviceAppVersionOutdated
+Outbox: não obrigatório.
+
+Heartbeat não deve gerar Outbox individualmente.
+
+---
+
+# 13. Identity e Segurança
+
+## UserCreated
+## UserActivated
+## UserBlocked
+## UserDisabled
+## RoleAssignedToUser
+## PermissionGranted
+## PermissionRevoked
+
+Outbox depende de necessidade de outros módulos.
+
+## TemporaryApprovalRequested
+## TemporaryApprovalGranted
+## TemporaryApprovalRejected
+
+Importantes para Operations/Notifications.
+
+## SensitiveDataAccessed
+
+Não transportar valor sensível.
+
+---
+
+# 14. Communications
+
+## CommunicationPublished
+Outbox: sim.
+
+## CommunicationPaused
+Outbox: sim.
+
+## CommunicationExpired
+Outbox: sim.
+
+## CommunicationDisplayed
+Alta frequência; preferir batching/projeção.
+
+## CommunicationPlaybackCompleted
+Alta frequência; pode ser agregado.
+
+## CommunicationPlaybackFailed
+Operacional.
+
+---
+
+# 15. Occurrences
+
+## OccurrenceOpened
+## OccurrenceAssigned
+## OccurrenceStatusChanged
+## OccurrenceResolved
+## OccurrenceCancelled
+
+Outbox conforme necessidade de notificação.
+
+---
+
+# 16. Retry e Dead Letter
+
+Outbox consumer:
+- retries com backoff;
+- `retry_count`;
+- `next_retry_at`;
+- erro técnico mascarado;
+- após limite configurado, marcar como falha operacional e gerar alerta.
+
+Não descartar evento crítico silenciosamente.
+
+---
+
+# 17. Versionamento
+
+Nome lógico:
+
+```text
+order-submitted.v1
+payment-attempt-approved.v1
+```
+
+`schemaVersion` também faz parte do envelope.
+
+Mudança incompatível:
+criar v2; não reinterpretar payload histórico.
+
+---
+
+# 18. SignalR
+
+Grupos sugeridos:
+
+```text
+establishment:{id}
+table:{tableId}
+table-session:{sessionId}
+kitchen-station:{stationId}
+device:{deviceId}
+user:{userId}
+```
+
+Notificação SignalR deve ser pequena:
+
+```json
+{
+  "type": "ProductionStatusChanged",
+  "resourceId": "uuid",
+  "version": 22
+}
+```
+
+Se o cliente detectar lacuna de versão, buscar snapshot pela API.
+
+---
+
+# 19. Eventos Críticos Obrigatórios em Outbox
+
+- OrderSubmitted
+- OrderItemCancelled
+- OrderItemChanged
+- ProductionItemRejected
+- ProductionItemReady
+- ProductionItemSentToTable
+- ProductionItemDelivered
+- DeliveryContested
+- PaymentAttemptApproved
+- PaymentAttemptStatusUnknown
+- PaymentReconciled
+- RefundCompleted
+- TableClosingStarted
+- TableSessionClosed
+- IngredientAvailabilityChanged
+- DeviceConfigurationRevoked
+
+---
+
+# 20. Checklist de Implementação de Evento
+
+Antes de adicionar evento:
+
+- [ ] nome representa fato no passado;
+- [ ] produtor definido;
+- [ ] payload mínimo;
+- [ ] sem dados sensíveis;
+- [ ] versionado;
+- [ ] consumidores identificados;
+- [ ] Outbox decidida;
+- [ ] idempotência definida;
+- [ ] retry definido;
+- [ ] SignalR separado de integração;
+- [ ] testes de consumidor duplicado.

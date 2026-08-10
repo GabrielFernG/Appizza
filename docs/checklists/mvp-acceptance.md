@@ -1,0 +1,22 @@
+# Aceite do MVP
+
+- [ ] configurar tablet;
+- [ ] múltiplos tablets por mesa;
+- [ ] abrir sessão automática;
+- [ ] CPF opcional;
+- [ ] menu/cache;
+- [ ] pizza/monte sua pizza/combo;
+- [ ] carrinho/simulação;
+- [ ] pedido idempotente;
+- [ ] cozinha/aceite/preparo/pausa/restart;
+- [ ] status por pedido/item;
+- [ ] cancelamento/alteração;
+- [ ] entrega/contestação/timeout configurável;
+- [ ] promoções;
+- [ ] banners/vídeos;
+- [ ] fechamento/divisão/participantes;
+- [ ] Pix/cartão/dinheiro/SoftPOS;
+- [ ] estorno;
+- [ ] limpeza configurável;
+- [ ] dashboard básico;
+- [ ] relatórios base.

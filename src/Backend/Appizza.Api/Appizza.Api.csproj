@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>Appizza.Api-Development-Secrets</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\BuildingBlocks\Appizza.BuildingBlocks\Appizza.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\..\BuildingBlocks\Appizza.Persistence\Appizza.Persistence.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Auditing\Appizza.Modules.Auditing.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Catalog\Appizza.Modules.Catalog.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Communications\Appizza.Modules.Communications.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Devices\Appizza.Modules.Devices.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Establishments\Appizza.Modules.Establishments.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Identity\Appizza.Modules.Identity.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Integration\Appizza.Modules.Integration.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Kitchen\Appizza.Modules.Kitchen.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Media\Appizza.Modules.Media.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Operations\Appizza.Modules.Operations.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Ordering\Appizza.Modules.Ordering.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Payments\Appizza.Modules.Payments.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Promotions\Appizza.Modules.Promotions.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Reporting\Appizza.Modules.Reporting.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Tables\Appizza.Modules.Tables.csproj" />
+  </ItemGroup>
+
+</Project>

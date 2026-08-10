@@ -1,0 +1,9 @@
+{
+  "sessionId": "session-uuid",
+  "participantId": "participant-uuid",
+  "amount": 60.0,
+  "method": "pix",
+  "allocation": {
+    "type": "participant"
+  }
+}

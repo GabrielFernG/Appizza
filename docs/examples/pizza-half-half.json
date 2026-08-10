@@ -1,0 +1,32 @@
+{
+  "productId": "pizza-custom",
+  "quantity": 1,
+  "pizza": {
+    "sizeId": "large",
+    "doughId": "traditional",
+    "crustId": "catupiry",
+    "fractions": [
+      {
+        "position": 1,
+        "flavorId": "calabresa",
+        "removedIngredientIds": [
+          "onion"
+        ],
+        "addedIngredients": []
+      },
+      {
+        "position": 2,
+        "flavorId": "portuguesa",
+        "removedIngredientIds": [],
+        "addedIngredients": [
+          {
+            "ingredientId": "bacon",
+            "quantity": 1
+          }
+        ]
+      }
+    ],
+    "wholePizzaAdditions": [],
+    "notes": "Assar bem."
+  }
+}
