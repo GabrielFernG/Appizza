@@ -19,6 +19,10 @@
   <ItemGroup>
     <ProjectReference Include="..\Appizza.BuildingBlocks\Appizza.BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\Modules\Appizza.Modules.Media\Appizza.Modules.Media.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Establishments\Appizza.Modules.Establishments.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Identity\Appizza.Modules.Identity.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Devices\Appizza.Modules.Devices.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Tables\Appizza.Modules.Tables.csproj" />
   </ItemGroup>
 
 </Project>

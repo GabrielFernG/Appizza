@@ -71,6 +71,7 @@ Request:
 
 ```json
 {
+  "establishmentCode": "PIZZARIA-CENTRO",
   "login": "joao",
   "password": "..."
 }
@@ -87,6 +88,7 @@ Response 200:
 ```json
 {
   "accessToken": "...",
+  "refreshToken": "...",
   "expiresInSeconds": 900,
   "user": {
     "id": "uuid",
@@ -101,6 +103,18 @@ Erros:
 - USER_INACTIVE
 
 Nunca retornar motivo que facilite enumeração de usuário.
+
+## POST `/api/v1/auth/token/refresh`
+
+Rotaciona refresh token opaco. O token anterior é revogado e somente seu hash é persistido.
+
+## POST `/api/v1/auth/sign-out`
+
+Revoga a sessão autenticada.
+
+## GET `/api/v1/auth/me`
+
+Retorna usuário, estabelecimento, roles e permissões efetivas da Fase 1.
 
 ---
 
@@ -211,6 +225,9 @@ Erros:
 Eventos:
 DeviceBoundToTable / DeviceReplaced.
 
+O bind atribui `establishment_id` ao dispositivo pendente. Um estabelecimento já atribuído não pode
+ser trocado sem revogação/reset explícito.
+
 ## GET `/api/v1/table-devices/me`
 
 Auth: device.
@@ -238,6 +255,18 @@ Request:
 ```
 
 Sem Outbox por heartbeat.
+
+## Operações de dispositivo
+
+```text
+POST /api/v1/operations/table-devices/{deviceId}/unbind
+POST /api/v1/operations/table-devices/{deviceId}/revoke-configuration
+POST /api/v1/operations/table-devices/{deviceId}/block
+POST /api/v1/operations/table-devices/{deviceId}/unblock
+```
+
+Todas exigem autenticação de funcionário, tenant resolvido pelo token e permissão correspondente.
+Revogação aumenta `credential_version`, encerra sessões de dispositivo e invalida credenciais antigas.
 
 ---
 
@@ -279,6 +308,8 @@ Response:
 }
 ```
 
+O modo de abertura registrado é `on_start_ordering`.
+
 Eventos:
 TableSessionOpened somente quando criada.
 
@@ -296,6 +327,10 @@ Request:
 ```
 
 Nunca devolver CPF completo.
+
+O mesmo CPF normalizado após `provided` é idempotente. CPF diferente ou tentativa após `skipped`
+retorna `CUSTOMER_IDENTIFICATION_ALREADY_RESOLVED`. Em corrida entre provide e skip, apenas uma
+operação vence.
 
 Erros:
 - CUSTOMER_IDENTIFICATION_ALREADY_RESOLVED

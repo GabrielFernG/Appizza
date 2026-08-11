@@ -1,7 +1,7 @@
 # Documentation Version
 
-Version: 3.1.0
-Status: Baseline aprovada para implementação da Fase 0
-Date: 2026-08-10
+Version: 3.2.1
+Status: Fase 1 concluída e formalmente aprovada
+Date: 2026-08-11
 
 Alterações futuras devem atualizar este arquivo quando constituírem uma nova baseline.

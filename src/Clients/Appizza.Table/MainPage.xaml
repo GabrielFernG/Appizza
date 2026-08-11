@@ -1,23 +1,21 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="Appizza.Table.MainPage">
-
-    <Grid Padding="32">
-        <VerticalStackLayout
-            HorizontalOptions="Center"
-            VerticalOptions="Center"
-            Spacing="12">
-            <Label
-                Text="Appizza.Table"
-                Style="{StaticResource Headline}"
-                HorizontalTextAlignment="Center"
-                SemanticProperties.HeadingLevel="Level1" />
-            <Label
-                Text="Fundação pronta. O fluxo de atendimento será entregue nas próximas fases."
-                Style="{StaticResource SubHeadline}"
-                HorizontalTextAlignment="Center" />
+             x:Class="Appizza.Table.MainPage"
+             Title="Configurar tablet">
+    <ScrollView>
+        <VerticalStackLayout Padding="32" Spacing="12">
+            <Label Text="Appizza.Table" Style="{StaticResource Headline}" />
+            <Label Text="Configuração segura do tablet" Style="{StaticResource SubHeadline}" />
+            <Entry x:Name="ApiUrl" Placeholder="URL da API" Text="http://10.0.2.2:8080" Keyboard="Url" />
+            <Entry x:Name="EstablishmentCode" Placeholder="Código do estabelecimento" />
+            <Entry x:Name="Login" Placeholder="Login" />
+            <Entry x:Name="Password" Placeholder="Senha" IsPassword="True" />
+            <Button Text="Registrar e entrar" Clicked="OnRegisterAndSignIn" />
+            <Picker x:Name="Tables" Title="Selecione a mesa" ItemDisplayBinding="{Binding Name}" />
+            <Button Text="Vincular tablet" Clicked="OnBind" />
+            <Button Text="Abrir ou restaurar sessão" Clicked="OnOpenSession" />
+            <Label x:Name="Status" Text="Aguardando configuração." />
         </VerticalStackLayout>
-    </Grid>
-
+    </ScrollView>
 </ContentPage>

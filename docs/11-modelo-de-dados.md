@@ -296,6 +296,7 @@ Representar uma unidade/estabelecimento.
 
 ```text
 id uuid PK
+public_code varchar(80) not null
 legal_name varchar(200) nullable
 trade_name varchar(200) not null
 tax_identifier varchar(30) nullable
@@ -322,6 +323,7 @@ version bigint not null
 
 ```text
 unique(tax_identifier) where tax_identifier is not null
+unique(public_code)
 index(status)
 ```
 
@@ -404,7 +406,7 @@ unique(establishment_id, setting_key)
 
 ```text
 devices.max_active_table_devices_per_table
-session.opening_mode
+session.opening_mode (`on_start_ordering` na Fase 1)
 session.closing_mode
 table.release_mode
 delivery.confirmation_mode
@@ -544,6 +546,7 @@ semântica padrão de `NULL` em unique constraints não garante essa regra isola
 ## 4.5 `identity.user_role`
 
 ```text
+id uuid PK
 user_id uuid FK not null
 role_id uuid FK not null
 valid_from timestamptz nullable
@@ -557,6 +560,9 @@ created_by uuid nullable
 ```text
 unique(user_id, role_id, valid_from)
 ```
+
+Na Fase 1, usar índices separados para atribuição sem prazo e atribuição temporal, evitando que
+`valid_from` nulo permita duplicidade lógica.
 
 ---
 
@@ -1526,6 +1532,8 @@ dining_table_id uuid FK not null
 session_number varchar(80) not null
 status varchar(40) not null
 opened_at timestamptz not null
+customer_identification_status varchar(20) not null
+customer_identification_resolved_at timestamptz nullable
 closing_started_at timestamptz nullable
 paid_at timestamptz nullable
 closed_at timestamptz nullable
@@ -1558,6 +1566,14 @@ closed
 suspended
 cancelled
 ```
+
+### Identificação
+
+```text
+customer_identification_status in ('pending','provided','skipped')
+```
+
+`resolved_at` é obrigatório para `provided` e `skipped`, e nulo para `pending`.
 
 ### Índice único parcial
 
@@ -2350,7 +2366,7 @@ applied_at timestamptz not null
 
 ```text
 id uuid PK
-establishment_id uuid FK not null
+establishment_id uuid FK nullable
 installation_id uuid not null
 name varchar(160) not null
 device_type varchar(40) not null
@@ -2372,8 +2388,11 @@ version bigint not null
 ### Unique
 
 ```text
-unique(establishment_id, installation_id)
+unique(installation_id)
 ```
+
+`establishment_id` é nulo somente em `awaiting_configuration`. O bind atribui o estabelecimento e
+ele não pode ser trocado sem revogação/reset explícito.
 
 ---
 
@@ -2411,7 +2430,34 @@ devices.max_active_table_devices_per_table
 
 ---
 
-## 13.3 `devices.device_heartbeat`
+## 13.3 `devices.device_session`
+
+```text
+id uuid PK
+device_id uuid FK not null
+refresh_token_hash varchar(160) not null
+credential_version integer not null
+started_at timestamptz not null
+expires_at timestamptz not null
+last_activity_at timestamptz nullable
+revoked_at timestamptz nullable
+replaced_by_session_id uuid nullable
+```
+
+Índices:
+
+```text
+unique(refresh_token_hash)
+index(device_id, revoked_at)
+index(expires_at)
+```
+
+Refresh tokens são opacos, rotativos e persistidos somente como hash. Rotação revoga a sessão
+anterior e referencia a sucessora.
+
+---
+
+## 13.4 `devices.device_heartbeat`
 
 ### Objetivo
 Guardar apenas o estado operacional mais recente.
@@ -2431,7 +2477,7 @@ Não guardar cada heartbeat histórico indefinidamente.
 
 ---
 
-## 13.4 `devices.device_event`
+## 13.5 `devices.device_event`
 
 ```text
 id uuid PK

@@ -64,7 +64,7 @@ Payload:
   "diningTableId": "uuid",
   "sessionNumber": "20260809-0018",
   "openedAtUtc": "2026-08-09T15:00:00Z",
-  "openingMode": "automatic_on_first_order",
+  "openingMode": "on_start_ordering",
   "openedByDeviceId": "uuid"
 }
 ```
@@ -565,6 +565,11 @@ Outbox: não obrigatório.
 
 Heartbeat não deve gerar Outbox individualmente.
 
+Na Fase 1, `DeviceBoundToTable`, `DeviceReplaced`, `DeviceUnboundFromTable`,
+`DeviceConfigurationRevoked`, `DeviceBlocked` e `DeviceUnblocked` passam pela Outbox. `DeviceRegistered`
+permanece evento local. Revogação e bloqueio também geram notificação SignalR pequena para
+`device:{deviceId}`; a API continua fonte de verdade.
+
 ---
 
 # 13. Identity e Segurança
@@ -588,6 +593,8 @@ Importantes para Operations/Notifications.
 ## SensitiveDataAccessed
 
 Não transportar valor sensível.
+
+Na Fase 1, eventos de identificação nunca transportam CPF completo, valor criptografado ou hash.
 
 ---
 

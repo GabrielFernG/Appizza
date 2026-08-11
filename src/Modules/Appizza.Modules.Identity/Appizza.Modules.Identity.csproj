@@ -2,6 +2,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\BuildingBlocks\Appizza.BuildingBlocks\Appizza.BuildingBlocks.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" />
   </ItemGroup>
 
   <PropertyGroup>

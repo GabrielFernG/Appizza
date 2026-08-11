@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Http.Json;
 
@@ -54,6 +55,7 @@ public sealed class FoundationApiFactory : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.UseSetting("ConnectionStrings:Appizza",
             "Host=127.0.0.1;Port=1;Database=appizza;Username=test;Password=test;Timeout=1");
         builder.UseSetting("ObjectStorage:Endpoint", "http://127.0.0.1:1");
@@ -61,6 +63,9 @@ public sealed class FoundationApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("ObjectStorage:AccessKey", "test");
         builder.UseSetting("ObjectStorage:SecretKey", "test");
         builder.UseSetting("ObjectStorage:UsePathStyle", "true");
+        builder.UseSetting("Phase1Security:SigningKey", "test-signing-key-with-at-least-32-bytes-long");
+        builder.UseSetting("Phase1Security:CpfEncryptionKey", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
+        builder.UseSetting("Phase1Security:CpfHmacKey", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
 
         builder.ConfigureAppConfiguration((_, configuration) =>
         {
@@ -73,6 +78,9 @@ public sealed class FoundationApiFactory : WebApplicationFactory<Program>
                 ["ObjectStorage:AccessKey"] = "test",
                 ["ObjectStorage:SecretKey"] = "test",
                 ["ObjectStorage:UsePathStyle"] = "true"
+                ,["Phase1Security:SigningKey"] = "test-signing-key-with-at-least-32-bytes-long"
+                ,["Phase1Security:CpfEncryptionKey"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+                ,["Phase1Security:CpfHmacKey"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
             });
         });
     }

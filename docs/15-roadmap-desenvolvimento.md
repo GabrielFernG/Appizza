@@ -36,3 +36,31 @@ Não pertencem à Fase 0:
 - tabelas funcionais de mídia;
 - antecipação do modelo conceitual completo em migrations;
 - definição do provider de object storage de produção.
+
+## Fase 1 — Establishments + Identity + Devices + Tables
+
+Status: **concluída e aprovada em 2026-08-11**.
+
+Entregáveis:
+- estabelecimento, configurações, endereço e horários;
+- autenticação de funcionário com `establishmentCode`, JWT e refresh rotativo;
+- RBAC no escopo do estabelecimento e matriz inicial de roles;
+- registro, bind, autenticação, refresh, heartbeat, unbind, revogação e bloqueio de tablets;
+- múltiplos tablets por mesa com limite transacional;
+- setores, mesas, abertura/restauração concorrente de sessão e identificação opcional;
+- CPF protegido por AES-256-GCM/HMAC-SHA256 e expurgo pelo Worker;
+- limpeza/liberação configurável, eventos Outbox e notificações SignalR;
+- migrations `Phase1_EstablishmentsIdentity` e `Phase1_DevicesTables`;
+- testes obrigatórios de concorrência e isolamento entre estabelecimentos.
+
+Não pertencem à Fase 1: `TemporaryApproval`, `SessionTransfer`, catálogo, menu, carrinho, pedidos,
+cozinha, pagamentos e onboarding público de estabelecimento.
+
+Critérios de encerramento aprovados:
+- migrations incrementais aplicadas e modelo EF Core sem alterações pendentes;
+- autenticação, refresh rotativo, RBAC e isolamento por estabelecimento validados em API real;
+- concorrência de bind, limite, substituição, identificação e abertura/restauração de sessão validada
+  contra PostgreSQL 18.4 via Testcontainers;
+- revogação, bloqueio e invalidação de credenciais validados;
+- estado físico e Outbox conferidos nos cenários críticos;
+- suíte .NET, arquitetura, MAUI Android/Windows e regressão Vue aprovadas.
