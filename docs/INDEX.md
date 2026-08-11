@@ -22,3 +22,6 @@
 ADRs de Fundação:
 - `adr/ADR-011-object-storage-e-media.md`
 - `adr/ADR-012-persistencia-da-fundacao.md`
+- `adr/ADR-013-autenticacao-tenant-e-dispositivos.md`
+- `adr/ADR-014-protecao-e-retencao-de-cpf.md`
+- `adr/ADR-015-composicao-ef-por-modulos.md`

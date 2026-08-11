@@ -13,6 +13,7 @@ builder.Services.AddDbContext<AppizzaDbContext>(options =>
     options.UseNpgsql(connectionString, npgsql =>
         npgsql.MigrationsHistoryTable("__ef_migrations_history", "integration")));
 builder.Services.AddHostedService<OutboxMonitorWorker>();
+builder.Services.AddHostedService<ExpiredCpfCleanupWorker>();
 
 var otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
 builder.Services.AddOpenTelemetry()

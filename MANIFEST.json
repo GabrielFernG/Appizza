@@ -1,6 +1,6 @@
 {
-  "version": "3.1.0",
-  "file_count": 55,
+  "version": "3.2.1",
+  "file_count": 58,
   "files": [
     "AGENTS.md",
     "DOCUMENTATION_VERSION.md",
@@ -34,6 +34,9 @@
     "docs/adr/ADR-010-cleaning-release-mode.md",
     "docs/adr/ADR-011-object-storage-e-media.md",
     "docs/adr/ADR-012-persistencia-da-fundacao.md",
+    "docs/adr/ADR-013-autenticacao-tenant-e-dispositivos.md",
+    "docs/adr/ADR-014-protecao-e-retencao-de-cpf.md",
+    "docs/adr/ADR-015-composicao-ef-por-modulos.md",
     "docs/checklists/definition-of-done.md",
     "docs/checklists/mvp-acceptance.md",
     "docs/checklists/pull-request.md",

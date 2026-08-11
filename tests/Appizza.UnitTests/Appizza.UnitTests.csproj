@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\BuildingBlocks\Appizza.BuildingBlocks\Appizza.BuildingBlocks.csproj" />
     <ProjectReference Include="..\..\src\BuildingBlocks\Appizza.Persistence\Appizza.Persistence.csproj" />
+    <ProjectReference Include="..\..\src\Backend\Appizza.Api\Appizza.Api.csproj" />
   </ItemGroup>
 
 </Project>
