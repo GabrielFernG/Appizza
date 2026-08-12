@@ -119,6 +119,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
     Predicate = registration => registration.Tags.Contains("ready")
 });
 app.MapPhase1Endpoints();
+app.MapPhase2Endpoints();
 app.MapHub<Phase1Hub>("/hubs/v1/updates");
 
 app.Run();

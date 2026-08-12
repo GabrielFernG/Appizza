@@ -357,7 +357,73 @@ Usado em reconexão/restart.
 
 ---
 
-# 7. Menu
+# 7. Administração de Catalog e Media
+
+Todos os endpoints desta seção usam autenticação de funcionário, tenant do token, RBAC e 404 para
+recursos fora do estabelecimento. Mutação usa `version`/`If-Match`; publicação, disponibilidade e
+upload usam `Idempotency-Key`.
+
+Recursos administrativos ficam sob:
+
+```text
+/api/v1/operations/catalog/categories
+/api/v1/operations/catalog/products
+/api/v1/operations/catalog/product-variants
+/api/v1/operations/catalog/ingredients
+/api/v1/operations/catalog/customization-groups
+/api/v1/operations/catalog/pizza-sizes
+/api/v1/operations/catalog/doughs
+/api/v1/operations/catalog/crusts
+```
+
+Cada coleção suporta listagem e criação; recursos suportam leitura, atualização e ações explícitas
+`activate`, `deactivate` e `archive` quando aplicáveis. Configurações compostas:
+
+```text
+PUT /api/v1/operations/catalog/products/{id}/categories
+PUT /api/v1/operations/catalog/products/{id}/ingredients
+PUT /api/v1/operations/catalog/products/{id}/customization-groups
+PUT /api/v1/operations/catalog/products/{id}/pizza-configuration
+PUT /api/v1/operations/catalog/products/{id}/combo-configuration
+```
+
+Disponibilidade:
+
+```text
+POST /api/v1/operations/catalog/availability/ingredients/{id}/change
+POST /api/v1/operations/catalog/availability/products/{id}/change
+POST /api/v1/operations/catalog/availability/variants/{id}/change
+GET  /api/v1/operations/catalog/availability
+```
+
+Request de mudança contém `available` e `reasonCode`. Response contém `explicitAvailable`,
+`effectiveAvailable` e `availabilityVersion`. Repetição sem mudança é idempotente e não incrementa.
+
+Publicação:
+
+```text
+POST /api/v1/operations/catalog/validate
+POST /api/v1/operations/catalog/publish
+GET  /api/v1/operations/catalog/publication
+```
+
+Publicação válida retorna `catalogRevisionId`, `catalogVersion`, `semanticHash` e `publishedAt`.
+Sem alteração semântica retorna 409 `CATALOG_NO_CHANGES_TO_PUBLISH`. Falha de validação retorna 422
+`CATALOG_VALIDATION_FAILED` e persiste tentativa `rejected` com erros estruturados.
+
+Media:
+
+```text
+POST /api/v1/operations/media/assets
+PUT  /api/v1/operations/media/assets/{id}/content
+GET  /api/v1/operations/media/assets/{id}
+POST /api/v1/operations/media/assets/{id}/archive
+```
+
+Criação retorna asset `pending_upload`. Envio valida MIME, tamanho, checksum e chave segura; sucesso
+leva a `ready`. Falha leva a `failed`. Tipos específicos do provider não aparecem no contrato.
+
+# 7A. Menu
 
 ## GET `/api/v1/table-device/menu`
 
@@ -915,6 +981,20 @@ PRODUCT_NOT_AVAILABLE
 VARIANT_UNAVAILABLE  
 INVALID_PRODUCT_CONFIGURATION  
 CATALOG_VERSION_OUTDATED  
+CATALOG_NO_CHANGES_TO_PUBLISH
+CATALOG_VALIDATION_FAILED
+CATEGORY_NOT_FOUND
+CATEGORY_HIERARCHY_CYCLE
+PRODUCT_INTERNAL_CODE_ALREADY_EXISTS
+VARIANT_INTERNAL_CODE_ALREADY_EXISTS
+PRODUCT_TYPE_CONFIGURATION_MISMATCH
+INVALID_INGREDIENT_RULE
+INVALID_PIZZA_CONFIGURATION
+INVALID_COMBO_CONFIGURATION
+CATALOG_CONCURRENCY_CONFLICT
+MEDIA_ASSET_NOT_FOUND
+MEDIA_UPLOAD_INVALID
+MEDIA_CHECKSUM_MISMATCH
 
 ## Ordering
 CART_EMPTY  

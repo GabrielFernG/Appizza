@@ -3,6 +3,7 @@ using System;
 using Appizza.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Appizza.Persistence.Migrations
 {
     [DbContext(typeof(AppizzaDbContext))]
-    partial class AppizzaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260811230734_Phase2_CatalogPizzaCombos")]
+    partial class Phase2_CatalogPizzaCombos
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -23,117 +26,6 @@ namespace Appizza.Persistence.Migrations
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.HasSequence("table_session_number_seq", "tables");
-
-            modelBuilder.Entity("Appizza.Modules.Catalog.CatalogRevision", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<long?>("CatalogVersion")
-                        .HasColumnType("bigint")
-                        .HasColumnName("catalog_version");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("EstablishmentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("establishment_id");
-
-                    b.Property<DateTimeOffset?>("PublishedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("published_at");
-
-                    b.Property<Guid?>("PublishedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("published_by");
-
-                    b.Property<string>("SemanticHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("semantic_hash");
-
-                    b.Property<string>("Snapshot")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("snapshot");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("status");
-
-                    b.Property<DateTimeOffset?>("SupersededAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("superseded_at");
-
-                    b.Property<string>("ValidationErrors")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("validation_errors");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EstablishmentId", "CatalogVersion")
-                        .IsUnique()
-                        .HasDatabaseName("ix_catalog_revision_establishment_id_catalog_version")
-                        .HasFilter("catalog_version is not null");
-
-                    b.HasIndex("EstablishmentId", "Status")
-                        .HasDatabaseName("ix_catalog_revision_establishment_id_status");
-
-                    b.ToTable("catalog_revision", "catalog", t =>
-                        {
-                            t.HasCheckConstraint("ck_catalog_revision_status", "status in ('validating','published','rejected','superseded')");
-                        });
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Catalog.CatalogState", b =>
-                {
-                    b.Property<Guid>("EstablishmentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("establishment_id");
-
-                    b.Property<long>("AvailabilityVersion")
-                        .HasColumnType("bigint")
-                        .HasColumnName("availability_version");
-
-                    b.Property<long>("CatalogVersion")
-                        .HasColumnType("bigint")
-                        .HasColumnName("catalog_version");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid?>("CurrentPublishedRevisionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("current_published_revision_id");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint")
-                        .HasColumnName("version");
-
-                    b.HasKey("EstablishmentId");
-
-                    b.HasIndex("CurrentPublishedRevisionId")
-                        .HasDatabaseName("ix_catalog_state_current_published_revision_id");
-
-                    b.ToTable("catalog_state", "catalog", t =>
-                        {
-                            t.HasCheckConstraint("ck_catalog_state_availability_version", "availability_version >= 0");
-
-                            t.HasCheckConstraint("ck_catalog_state_catalog_version", "catalog_version >= 0");
-                        });
-                });
 
             modelBuilder.Entity("Appizza.Modules.Catalog.Category", b =>
                 {
@@ -196,9 +88,6 @@ namespace Appizza.Persistence.Migrations
                         .HasColumnName("version");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ImageMediaId")
-                        .HasDatabaseName("ix_category_image_media_id");
 
                     b.HasIndex("ParentCategoryId")
                         .HasDatabaseName("ix_category_parent_category_id");
@@ -869,9 +758,6 @@ namespace Appizza.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ImageMediaId")
-                        .HasDatabaseName("ix_ingredient_image_media_id");
-
                     b.HasIndex("EstablishmentId", "Status", "Name")
                         .HasDatabaseName("ix_ingredient_establishment_id_status_name");
 
@@ -951,49 +837,6 @@ namespace Appizza.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_ingredient_attribute_definition_status", "status in ('active','inactive','archived')");
                         });
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Catalog.IngredientAvailability", b =>
-                {
-                    b.Property<Guid>("IngredientId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("ingredient_id");
-
-                    b.Property<bool>("EffectivelyAvailable")
-                        .HasColumnType("boolean")
-                        .HasColumnName("effectively_available");
-
-                    b.Property<Guid>("EstablishmentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("establishment_id");
-
-                    b.Property<bool>("ExplicitlyAvailable")
-                        .HasColumnType("boolean")
-                        .HasColumnName("explicitly_available");
-
-                    b.Property<string>("Reason")
-                        .HasColumnType("text")
-                        .HasColumnName("reason");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("updated_by");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint")
-                        .HasColumnName("version");
-
-                    b.HasKey("IngredientId");
-
-                    b.HasIndex("EstablishmentId", "EffectivelyAvailable")
-                        .HasDatabaseName("ix_ingredient_availability_establishment_id_effectively_availa~");
-
-                    b.ToTable("ingredient_availability", "catalog");
                 });
 
             modelBuilder.Entity("Appizza.Modules.Catalog.PizzaCrust", b =>
@@ -1341,9 +1184,6 @@ namespace Appizza.Persistence.Migrations
                     b.HasIndex("PrimaryCategoryId")
                         .HasDatabaseName("ix_product_primary_category_id");
 
-                    b.HasIndex("PrimaryImageMediaId")
-                        .HasDatabaseName("ix_product_primary_image_media_id");
-
                     b.HasIndex("EstablishmentId", "InternalCode")
                         .IsUnique()
                         .HasDatabaseName("ix_product_establishment_id_internal_code")
@@ -1360,49 +1200,6 @@ namespace Appizza.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_product_type", "product_type in ('simple','configurable','pizza','custom_pizza','combo')");
                         });
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Catalog.ProductAvailability", b =>
-                {
-                    b.Property<Guid>("ProductId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("product_id");
-
-                    b.Property<string>("DerivedReason")
-                        .HasColumnType("text")
-                        .HasColumnName("derived_reason");
-
-                    b.Property<bool>("EffectivelyAvailable")
-                        .HasColumnType("boolean")
-                        .HasColumnName("effectively_available");
-
-                    b.Property<Guid>("EstablishmentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("establishment_id");
-
-                    b.Property<bool>("ExplicitlyAvailable")
-                        .HasColumnType("boolean")
-                        .HasColumnName("explicitly_available");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("updated_by");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint")
-                        .HasColumnName("version");
-
-                    b.HasKey("ProductId");
-
-                    b.HasIndex("EstablishmentId", "EffectivelyAvailable")
-                        .HasDatabaseName("ix_product_availability_establishment_id_effectively_available");
-
-                    b.ToTable("product_availability", "catalog");
                 });
 
             modelBuilder.Entity("Appizza.Modules.Catalog.ProductCategory", b =>
@@ -1705,9 +1502,6 @@ namespace Appizza.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ImageMediaId")
-                        .HasDatabaseName("ix_product_variant_image_media_id");
-
                     b.HasIndex("ProductId", "InternalCode")
                         .IsUnique()
                         .HasDatabaseName("ix_product_variant_product_id_internal_code")
@@ -1722,49 +1516,6 @@ namespace Appizza.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_product_variant_status", "status in ('active','inactive','archived')");
                         });
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Catalog.ProductVariantAvailability", b =>
-                {
-                    b.Property<Guid>("ProductVariantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("product_variant_id");
-
-                    b.Property<string>("DerivedReason")
-                        .HasColumnType("text")
-                        .HasColumnName("derived_reason");
-
-                    b.Property<bool>("EffectivelyAvailable")
-                        .HasColumnType("boolean")
-                        .HasColumnName("effectively_available");
-
-                    b.Property<Guid>("EstablishmentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("establishment_id");
-
-                    b.Property<bool>("ExplicitlyAvailable")
-                        .HasColumnType("boolean")
-                        .HasColumnName("explicitly_available");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("updated_by");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint")
-                        .HasColumnName("version");
-
-                    b.HasKey("ProductVariantId");
-
-                    b.HasIndex("EstablishmentId", "EffectivelyAvailable")
-                        .HasDatabaseName("ix_product_variant_availability_establishment_id_effectively_a~");
-
-                    b.ToTable("product_variant_availability", "catalog");
                 });
 
             modelBuilder.Entity("Appizza.Modules.Catalog.ProductVariantIngredientOverride", b =>
@@ -2813,98 +2564,6 @@ namespace Appizza.Persistence.Migrations
                     b.ToTable("user_session", "identity");
                 });
 
-            modelBuilder.Entity("Appizza.Modules.Media.MediaAsset", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset?>("ArchivedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("archived_at");
-
-                    b.Property<string>("ChecksumSha256")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
-                        .HasColumnName("checksum_sha256");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uuid")
-                        .HasColumnName("created_by");
-
-                    b.Property<Guid>("EstablishmentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("establishment_id");
-
-                    b.Property<string>("FailureReason")
-                        .HasColumnType("text")
-                        .HasColumnName("failure_reason");
-
-                    b.Property<string>("FileName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("file_name");
-
-                    b.Property<long>("FileSize")
-                        .HasColumnType("bigint")
-                        .HasColumnName("file_size");
-
-                    b.Property<string>("MimeType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("mime_type");
-
-                    b.Property<string>("ObjectKey")
-                        .IsRequired()
-                        .HasMaxLength(512)
-                        .HasColumnType("character varying(512)")
-                        .HasColumnName("object_key");
-
-                    b.Property<DateTimeOffset?>("ReadyAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("ready_at");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("status");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint")
-                        .HasColumnName("version");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ObjectKey")
-                        .IsUnique()
-                        .HasDatabaseName("ix_asset_object_key");
-
-                    b.HasIndex("EstablishmentId", "Status")
-                        .HasDatabaseName("ix_asset_establishment_id_status");
-
-                    b.ToTable("asset", "media", t =>
-                        {
-                            t.HasCheckConstraint("ck_media_asset_checksum", "length(checksum_sha256) = 64");
-
-                            t.HasCheckConstraint("ck_media_asset_size", "file_size > 0");
-
-                            t.HasCheckConstraint("ck_media_asset_status", "status in ('pending_upload','ready','failed','archived')");
-                        });
-                });
-
             modelBuilder.Entity("Appizza.Modules.Tables.DiningTable", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3450,29 +3109,6 @@ namespace Appizza.Persistence.Migrations
                     b.ToTable("outbox_message", "integration");
                 });
 
-            modelBuilder.Entity("Appizza.Modules.Catalog.CatalogRevision", b =>
-                {
-                    b.HasOne("Appizza.Modules.Establishments.Establishment", null)
-                        .WithMany()
-                        .HasForeignKey("EstablishmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Catalog.CatalogState", b =>
-                {
-                    b.HasOne("Appizza.Modules.Catalog.CatalogRevision", null)
-                        .WithMany()
-                        .HasForeignKey("CurrentPublishedRevisionId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Appizza.Modules.Establishments.Establishment", null)
-                        .WithOne()
-                        .HasForeignKey("Appizza.Modules.Catalog.CatalogState", "EstablishmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Appizza.Modules.Catalog.Category", b =>
                 {
                     b.HasOne("Appizza.Modules.Establishments.Establishment", null)
@@ -3480,11 +3116,6 @@ namespace Appizza.Persistence.Migrations
                         .HasForeignKey("EstablishmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("Appizza.Modules.Media.MediaAsset", null)
-                        .WithMany()
-                        .HasForeignKey("ImageMediaId")
-                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Appizza.Modules.Catalog.Category", null)
                         .WithMany()
@@ -3641,11 +3272,6 @@ namespace Appizza.Persistence.Migrations
                         .HasForeignKey("EstablishmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("Appizza.Modules.Media.MediaAsset", null)
-                        .WithMany()
-                        .HasForeignKey("ImageMediaId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Appizza.Modules.Catalog.IngredientAttribute", b =>
@@ -3669,15 +3295,6 @@ namespace Appizza.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("EstablishmentId")
                         .OnDelete(DeleteBehavior.Restrict);
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Catalog.IngredientAvailability", b =>
-                {
-                    b.HasOne("Appizza.Modules.Catalog.Ingredient", null)
-                        .WithOne()
-                        .HasForeignKey("Appizza.Modules.Catalog.IngredientAvailability", "IngredientId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Appizza.Modules.Catalog.PizzaCrust", b =>
@@ -3770,20 +3387,6 @@ namespace Appizza.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("PrimaryCategoryId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("Appizza.Modules.Media.MediaAsset", null)
-                        .WithMany()
-                        .HasForeignKey("PrimaryImageMediaId")
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Catalog.ProductAvailability", b =>
-                {
-                    b.HasOne("Appizza.Modules.Catalog.Product", null)
-                        .WithOne()
-                        .HasForeignKey("Appizza.Modules.Catalog.ProductAvailability", "ProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("Appizza.Modules.Catalog.ProductCategory", b =>
@@ -3848,23 +3451,9 @@ namespace Appizza.Persistence.Migrations
 
             modelBuilder.Entity("Appizza.Modules.Catalog.ProductVariant", b =>
                 {
-                    b.HasOne("Appizza.Modules.Media.MediaAsset", null)
-                        .WithMany()
-                        .HasForeignKey("ImageMediaId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Appizza.Modules.Catalog.Product", null)
                         .WithMany()
                         .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Catalog.ProductVariantAvailability", b =>
-                {
-                    b.HasOne("Appizza.Modules.Catalog.ProductVariant", null)
-                        .WithOne()
-                        .HasForeignKey("Appizza.Modules.Catalog.ProductVariantAvailability", "ProductVariantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -4029,15 +3618,6 @@ namespace Appizza.Persistence.Migrations
                     b.HasOne("Appizza.Modules.Identity.User", null)
                         .WithMany()
                         .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Media.MediaAsset", b =>
-                {
-                    b.HasOne("Appizza.Modules.Establishments.Establishment", null)
-                        .WithMany()
-                        .HasForeignKey("EstablishmentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

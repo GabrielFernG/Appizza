@@ -3,6 +3,7 @@ using System;
 using Appizza.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Appizza.Persistence.Migrations
 {
     [DbContext(typeof(AppizzaDbContext))]
-    partial class AppizzaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260811231138_Phase2_CatalogPublicationMedia")]
+    partial class Phase2_CatalogPublicationMedia
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
