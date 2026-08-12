@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Appizza.Api;
 using Appizza.Modules.Devices;
+using Appizza.Modules.Catalog;
 using Appizza.Modules.Establishments;
 using Appizza.Modules.Identity;
 using Appizza.Modules.Tables;
@@ -288,7 +289,7 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
         var tables = Enumerable.Range(1, tableCount).Select(index => new DiningTable { Id = Guid.NewGuid(), EstablishmentId = establishment.Id, Name = $"Mesa {index}", InternalCode = $"M{index}", CreatedAt = now, UpdatedAt = now }).ToArray();
         db.AddRange(tables);
         var permissions = new List<Permission>();
-        foreach (var code in Phase1Permissions.All)
+        foreach (var code in Phase1Permissions.All.Concat(Phase2Permissions.All))
         {
             var permission = await db.Set<Permission>().SingleOrDefaultAsync(x => x.Code == code) ?? new Permission { Id = Guid.NewGuid(), Code = code, Module = code.Split('.')[0], Name = code };
             if (db.Entry(permission).State == EntityState.Detached) db.Add(permission);
@@ -370,6 +371,9 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
         return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
     }
     public Task<HttpResponseMessage> PostAsync(string path, object? body, string? token = null, bool idempotent = false) => SendAsync(HttpMethod.Post, path, body, token, idempotent);
+    public Task<HttpResponseMessage> PutAsync(string path, object? body, string token) => SendAsync(HttpMethod.Put, path, body, token, false);
+    public async Task<HttpResponseMessage> PutContentAsync(string path, byte[] content, string contentType, string token)
+    { using var request = new HttpRequestMessage(HttpMethod.Put, path) { Content = new ByteArrayContent(content) }; request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token); request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString()); return await _client!.SendAsync(request); }
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? body, string? token, bool idempotent)
     {
@@ -404,13 +408,17 @@ internal sealed class Phase1TestFactory(string connectionString) : WebApplicatio
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        var objectStorageEndpoint = Environment.GetEnvironmentVariable("APPIZZA_TEST_OBJECT_STORAGE_ENDPOINT") ?? "http://127.0.0.1:1";
+        var objectStorageBucket = Environment.GetEnvironmentVariable("APPIZZA_TEST_OBJECT_STORAGE_BUCKET") ?? "test";
+        var objectStorageAccessKey = Environment.GetEnvironmentVariable("APPIZZA_TEST_OBJECT_STORAGE_ACCESS_KEY") ?? "test";
+        var objectStorageSecretKey = Environment.GetEnvironmentVariable("APPIZZA_TEST_OBJECT_STORAGE_SECRET_KEY") ?? "test";
         builder.UseEnvironment("Testing");
         builder.ConfigureLogging(logging => logging.ClearProviders());
         builder.UseSetting("ConnectionStrings:Appizza", connectionString);
-        builder.UseSetting("ObjectStorage:Endpoint", "http://127.0.0.1:1");
-        builder.UseSetting("ObjectStorage:Bucket", "test");
-        builder.UseSetting("ObjectStorage:AccessKey", "test");
-        builder.UseSetting("ObjectStorage:SecretKey", "test");
+        builder.UseSetting("ObjectStorage:Endpoint", objectStorageEndpoint);
+        builder.UseSetting("ObjectStorage:Bucket", objectStorageBucket);
+        builder.UseSetting("ObjectStorage:AccessKey", objectStorageAccessKey);
+        builder.UseSetting("ObjectStorage:SecretKey", objectStorageSecretKey);
         builder.UseSetting("ObjectStorage:UsePathStyle", "true");
         builder.UseSetting("Phase1Security:SigningKey", "integration-signing-key-with-at-least-32-bytes");
         builder.UseSetting("Phase1Security:CpfEncryptionKey", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=");
@@ -419,10 +427,10 @@ internal sealed class Phase1TestFactory(string connectionString) : WebApplicatio
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:Appizza"] = connectionString,
-            ["ObjectStorage:Endpoint"] = "http://127.0.0.1:1",
-            ["ObjectStorage:Bucket"] = "test",
-            ["ObjectStorage:AccessKey"] = "test",
-            ["ObjectStorage:SecretKey"] = "test",
+            ["ObjectStorage:Endpoint"] = objectStorageEndpoint,
+            ["ObjectStorage:Bucket"] = objectStorageBucket,
+            ["ObjectStorage:AccessKey"] = objectStorageAccessKey,
+            ["ObjectStorage:SecretKey"] = objectStorageSecretKey,
             ["ObjectStorage:UsePathStyle"] = "true",
             ["Phase1Security:SigningKey"] = "integration-signing-key-with-at-least-32-bytes",
             ["Phase1Security:CpfEncryptionKey"] = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",

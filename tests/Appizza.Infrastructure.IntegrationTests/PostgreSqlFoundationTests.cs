@@ -54,7 +54,10 @@ public sealed class PostgreSqlFoundationTests
         Assert.Contains("identity.user", tables);
         Assert.Contains("devices.device_session", tables);
         Assert.Contains("tables.table_session", tables);
-        Assert.DoesNotContain(tables, table => table.StartsWith("catalog.", StringComparison.Ordinal));
+        Assert.Contains("catalog.product", tables);
+        Assert.Contains("catalog.catalog_revision", tables);
+        Assert.Contains("catalog.ingredient_availability", tables);
+        Assert.Contains("media.asset", tables);
         Assert.DoesNotContain(tables, table => table.StartsWith("ordering.", StringComparison.Ordinal));
         Assert.DoesNotContain(tables, table => table.StartsWith("payments.", StringComparison.Ordinal));
 

@@ -64,3 +64,34 @@ Critérios de encerramento aprovados:
 - revogação, bloqueio e invalidação de credenciais validados;
 - estado físico e Outbox conferidos nos cenários críticos;
 - suíte .NET, arquitetura, MAUI Android/Windows e regressão Vue aprovadas.
+
+## Fase 2 — Catalog
+
+Status: **concluída e formalmente aprovada em 2026-08-11**.
+
+Entregáveis:
+- backend administrativo completo de Catalog e Media;
+- categorias, produtos, variantes, ingredientes, atributos e personalizações;
+- pizzas, multissabores iguais, Monte sua Pizza, massas, bordas e tamanhos;
+- combos integralmente validados;
+- lifecycle administrativo `active`, `inactive`, `archived`;
+- revisão publicada imutável com snapshot JSONB e `catalogVersion` monotônico;
+- disponibilidade explícita e efetiva com `availabilityVersion` independente;
+- assets reutilizáveis dentro do estabelecimento via `IObjectStorage`;
+- RBAC, Outbox, idempotência, concorrência e isolamento cross-tenant;
+- migrations `Phase2_CatalogCore`, `Phase2_CatalogPizzaCombos` e
+  `Phase2_CatalogPublicationMedia`.
+
+Não pertencem à Fase 2: menu/cache/carrinho do Appizza.Table, UI administrativa do
+Appizza.Operations, Promotions, Ordering, Kitchen e funcionalidades das fases seguintes.
+
+Fechamento dos checkpoints:
+- **Checkpoint A — CatalogCore:** concluído, migrado e validado contra PostgreSQL real;
+- **Checkpoint B — CatalogPizzaCombos:** concluído, incluindo pizzas multissabor, Monte sua Pizza e
+  validação de combos;
+- **Checkpoint C — CatalogPublicationMedia:** concluído, incluindo publicação, disponibilidade,
+  Media, Outbox, idempotência, concorrência e integração real com SeaweedFS;
+- suíte .NET, PostgreSQL/Testcontainers, API, arquitetura, MAUI Android/Windows e regressão Vue
+  aprovadas;
+- nenhum item de menu/cache/carrinho do Appizza.Table, UI administrativa do Appizza.Operations ou
+  funcionalidade da Fase 3 foi antecipado.

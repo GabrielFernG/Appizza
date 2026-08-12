@@ -1309,6 +1309,65 @@ allowed_variant
 
 ---
 
+# 7A. Publicação e disponibilidade do catálogo
+
+## 7A.1 `catalog.catalog_state`
+
+```text
+establishment_id uuid PK/FK
+catalog_version bigint not null
+availability_version bigint not null
+updated_at timestamptz not null
+version bigint not null
+```
+
+Os contadores são monotônicos e independentes. Publicação semanticamente nova incrementa somente
+`catalog_version`; mudança efetiva de disponibilidade incrementa somente `availability_version`.
+
+## 7A.2 `catalog.catalog_revision`
+
+```text
+id uuid PK
+establishment_id uuid FK not null
+catalog_version bigint nullable
+status varchar(30) not null
+snapshot jsonb nullable
+semantic_hash varchar(64) nullable
+validation_errors jsonb nullable
+created_by uuid not null
+created_at timestamptz not null
+published_at timestamptz nullable
+superseded_at timestamptz nullable
+```
+
+Estados: `validating`, `published`, `rejected`, `superseded`. Uma revisão publicada é imutável. O
+snapshot contém estrutura, configuração e preços, nunca disponibilidade operacional. Uniques:
+`(establishment_id, catalog_version)` quando a versão não for nula e uma única revisão `published`
+por estabelecimento por índice único parcial.
+
+## 7A.3 Disponibilidade
+
+`catalog.ingredient_availability`, `catalog.product_availability` e
+`catalog.product_variant_availability` possuem:
+
+```text
+id uuid PK
+establishment_id uuid FK not null
+<resource_id> uuid FK not null
+explicit_available boolean not null
+effective_available boolean not null
+reason_code varchar(80) nullable
+changed_by uuid not null
+changed_at timestamptz not null
+version bigint not null
+```
+
+Cada recurso possui uma única linha de disponibilidade. `effective_available` inclui dependências.
+Ingrediente obrigatório indisponível propaga indisponibilidade; opcional/adicional indisponível não.
+Mudança que não altere disponibilidade efetiva nem explícita não incrementa a versão global.
+
+---
+
 # 8. Schema `promotions`
 
 ## 8.1 `promotions.promotion`
@@ -2521,6 +2580,14 @@ created_at timestamptz not null
 image
 video
 ```
+
+Estados: `pending_upload`, `ready`, `failed`, `archived`. Transições permitidas:
+`pending_upload -> ready | failed` e `ready -> archived`. Não há processamento ou thumbnails na
+Fase 2. Checksum é obrigatório para integridade, sem deduplicação automática.
+
+Um asset pode ser reutilizado por entidades do mesmo estabelecimento. Não pode ser associado
+cross-tenant nem apagado fisicamente quando referenciado por revisão publicada. Upload valida
+ownership, MIME permitido, tamanho máximo, checksum e segurança da chave/nome.
 
 Esta tabela é conceitual e não faz parte da migration `Foundation`.
 

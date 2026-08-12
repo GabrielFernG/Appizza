@@ -425,6 +425,16 @@ Outbox: sim.
 
 # 10. Disponibilidade
 
+## CatalogPublished
+
+Produtor: Catalog
+Outbox: obrigatório, na mesma transação da publicação.
+
+Payload: `catalogRevisionId`, `catalogVersion`, `semanticHash`, `publishedByUserId`.
+
+Consumidores: Menu da Fase 3, Reporting futuro e notificações SignalR. Publicações semanticamente
+iguais não geram revisão, evento ou incremento de versão.
+
 ## IngredientAvailabilityChanged
 
 Produtor: Catalog/Kitchen operations  
@@ -447,6 +457,9 @@ Outbox: sim.
 
 ## CatalogAvailabilityRecalculated
 Pode ser interno ou UI notification.
+
+Eventos de disponibilidade carregam `availabilityVersion`, disponibilidade explícita e efetiva.
+Só são emitidos quando houver mudança real persistida.
 
 ---
 
@@ -705,6 +718,7 @@ Se o cliente detectar lacuna de versão, buscar snapshot pela API.
 - TableClosingStarted
 - TableSessionClosed
 - IngredientAvailabilityChanged
+- CatalogPublished
 - DeviceConfigurationRevoked
 
 ---

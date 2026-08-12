@@ -1,4 +1,5 @@
 using Appizza.Modules.Establishments;
+using Appizza.Modules.Catalog;
 using Appizza.Modules.Identity;
 using Appizza.Modules.Tables;
 using Appizza.Persistence;
@@ -27,7 +28,8 @@ public static class Phase1DevelopmentSeeder
             for (var number = 1; number <= 4; number++) db.Add(new DiningTable { Id = Guid.NewGuid(), EstablishmentId = establishmentId, SectorId = sector.Id, Name = $"Mesa {number:00}", InternalCode = $"M{number:00}", DisplayOrder = number, CreatedAt = now, UpdatedAt = now });
         }
         var permissions = new Dictionary<string, Permission>(StringComparer.Ordinal);
-        foreach (var code in Phase1Permissions.All)
+        var allPermissions = Phase1Permissions.All.Concat(Phase2Permissions.All).ToArray();
+        foreach (var code in allPermissions)
         {
             var permission = await db.Set<Permission>().SingleOrDefaultAsync(x => x.Code == code, ct) ?? new Permission { Id = Guid.NewGuid(), Code = code, Module = code.Split('.')[0], Name = code };
             if (db.Entry(permission).State == EntityState.Detached) db.Add(permission); permissions[code] = permission;
@@ -35,7 +37,7 @@ public static class Phase1DevelopmentSeeder
         var roleNames = new[] { "Administrador", "Gerente", "Caixa", "Cozinha", "Garçom", "Atendente" }; var roles = new Dictionary<string, Role>();
         foreach (var name in roleNames) { var role = await db.Set<Role>().SingleOrDefaultAsync(x => x.EstablishmentId == establishmentId && x.Name == name, ct) ?? new Role { Id = Guid.NewGuid(), EstablishmentId = establishmentId, Name = name, IsSystemRole = true, CreatedAt = now, UpdatedAt = now }; if (db.Entry(role).State == EntityState.Detached) db.Add(role); roles[name] = role; }
         await db.SaveChangesAsync(ct);
-        var mapping = new Dictionary<string, string[]> { ["Administrador"] = Phase1Permissions.All, ["Gerente"] = Phase1Permissions.All, ["Atendente"] = ["tables.view", "tables.session.view", "devices.view", "devices.table.configure"], ["Garçom"] = ["tables.view", "tables.session.view", "tables.cleaning.confirm"], ["Caixa"] = ["tables.view", "tables.session.view"], ["Cozinha"] = [] };
+        var mapping = new Dictionary<string, string[]> { ["Administrador"] = allPermissions, ["Gerente"] = allPermissions, ["Atendente"] = ["tables.view", "tables.session.view", "devices.view", "devices.table.configure", "catalog.read"], ["Garçom"] = ["tables.view", "tables.session.view", "tables.cleaning.confirm", "catalog.read"], ["Caixa"] = ["tables.view", "tables.session.view", "catalog.read", "catalog.availability.manage"], ["Cozinha"] = ["catalog.read", "catalog.availability.manage"] };
         foreach (var (roleName, codes) in mapping) foreach (var code in codes) if (!await db.Set<RolePermission>().AnyAsync(x => x.RoleId == roles[roleName].Id && x.PermissionId == permissions[code].Id && x.ScopeType == null, ct)) db.Add(new RolePermission { Id = Guid.NewGuid(), RoleId = roles[roleName].Id, PermissionId = permissions[code].Id, CreatedAt = now });
         var admin = await db.Set<User>().SingleOrDefaultAsync(x => x.EstablishmentId == establishmentId && x.Login == "admin", ct);
         if (admin is null) { admin = new User { Id = Guid.NewGuid(), EstablishmentId = establishmentId, Name = "Administrador Development", Login = "admin", CreatedAt = now, UpdatedAt = now }; admin.PasswordHash = hasher.HashPassword(admin, password); db.Add(admin); db.Add(new UserRole { Id = Guid.NewGuid(), UserId = admin.Id, RoleId = roles["Administrador"].Id, CreatedAt = now }); }
