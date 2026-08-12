@@ -1,6 +1,6 @@
 {
-  "version": "3.3.1",
-  "file_count": 60,
+  "version": "3.4.1",
+  "file_count": 62,
   "files": [
     "AGENTS.md",
     "DOCUMENTATION_VERSION.md",
@@ -39,6 +39,8 @@
     "docs/adr/ADR-015-composicao-ef-por-modulos.md",
     "docs/adr/ADR-016-publicacao-e-disponibilidade-do-catalogo.md",
     "docs/adr/ADR-017-lifecycle-e-upload-de-media.md",
+    "docs/adr/ADR-018-menu-publicado-cache-e-versoes.md",
+    "docs/adr/ADR-019-carrinho-local-e-fronteira-de-confianca.md",
     "docs/checklists/definition-of-done.md",
     "docs/checklists/mvp-acceptance.md",
     "docs/checklists/pull-request.md",

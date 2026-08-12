@@ -78,3 +78,24 @@ carrinho que a consomem pertencem à Fase 3.
 
 Combos são validados integralmente antes da publicação: limites dos grupos, obrigatoriedade,
 repetição, critérios de inclusão e restrições precisam formar ao menos uma escolha válida.
+
+## Decisões da Fase 3
+
+O menu completo contém estrutura, configuração e preços da `CatalogRevision`; disponibilidade é um
+overlay independente. O tablet compõe ambos para UX usando `catalogVersion`, `availabilityVersion` e
+`schemaVersion = 1`. Produto indisponível permanece visível e não selecionável; categorias sem
+produto efetivamente visível são ocultadas. Combo dentro de combo é proibido no MVP.
+
+O `configurationVersion` público é um hash SHA-256 hexadecimal de uma representação JSON canônica,
+algoritmo `appizza-config-v1`: propriedades em ordem definida pelo contrato, coleções semanticamente
+ordenadas por seus IDs/posição, números decimais em representação invariável e ausência de campos
+técnicos, auditoria e timestamps. Mudança comercial/configurável altera o hash; mudança puramente
+técnica não. Campos desconhecidos compatíveis são ignorados, mas `schemaVersion` desconhecida nunca
+substitui cache conhecido.
+
+Preço local usa `decimal`, preserva precisão intermediária e arredonda valores apresentados para duas
+casas com `MidpointRounding.AwayFromZero`. Para N sabores iguais, calcula a média antes do
+arredondamento. É sempre estimativa: servidor futuro revalidará preço, disponibilidade e regras.
+
+Quando `maximum_flavor_count` não impuser limite menor, o contrato publica máximo prático padrão 4;
+o MAUI não mantém esse número como regra imutável própria.

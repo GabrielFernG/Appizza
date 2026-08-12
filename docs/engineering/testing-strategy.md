@@ -43,6 +43,18 @@ Providers de pagamento.
 ## Frontend
 Componentes, stores e fluxos críticos.
 
+### Baseline obrigatória da Fase 3
+
+- ETag composto, 304 e overlay incremental de disponibilidade;
+- PostgreSQL/Testcontainers para leitura consistente, device auth e cross-tenant;
+- SQLite real para migrations, cache atômico, carrinho, restart e `session_mismatch`;
+- offline com/sem cache, reconexão, resume e SignalR perdido/duplicado/fora de ordem;
+- schema 1, versão futura e campos compatíveis desconhecidos;
+- hash semântico determinístico e insensível a metadados técnicos;
+- cache de mídia com checksum, falha, LRU, espaço crítico e SeaweedFS real;
+- produtos, variantes, ingredientes, pizzas, Monte sua Pizza, combos e estimativa decimal;
+- ausência de Order, simulação autoritativa, reserva ou fila offline.
+
 ## E2E
 Cenário ouro:
 abrir sessão -> pedido -> aceitar -> preparar -> entregar -> fechar -> pagar -> liberar.

@@ -425,22 +425,31 @@ leva a `ready`. Falha leva a `failed`. Tipos específicos do provider não apare
 
 # 7A. Menu
 
+Contrato inicial: `schemaVersion = 1`. Campos JSON desconhecidos compatíveis são ignorados. Versão de
+schema não suportada não substitui cache conhecido e, sem cache compatível, leva a estado seguro de
+indisponibilidade/retry.
+
 ## GET `/api/v1/table-device/menu`
 
 Auth: device.
 
 Suporta:
 - `If-None-Match`;
-- `knownVersion`.
+- `knownCatalogVersion` e `knownAvailabilityVersion` como fallback ao header.
+
+ETag semântico: `"catalog-{catalogVersion}-availability-{availabilityVersion}-schema-1"`.
+Retorna 304 somente quando os três componentes coincidirem. Mudança apenas de disponibilidade deve
+ser obtida pelo endpoint incremental; o menu completo permanece fallback.
 
 Response conceitual:
 
 ```json
 {
   "menu": {
-    "id": "uuid",
-    "version": 42,
+    "catalogRevisionId": "uuid",
+    "catalogVersion": 42,
     "availabilityVersion": 19,
+    "schemaVersion": 1,
     "publishedAt": "2026-08-09T12:00:00Z"
   },
   "navigation": [],
@@ -452,6 +461,19 @@ Response conceitual:
 ```
 
 304 quando aplicável.
+
+Cada item configurável inclui `configurationVersion` no formato
+`appizza-config-v1:{sha256-hex}`. O hash usa JSON canônico de produto, variante, tamanho, sabores,
+ingredientes, grupos/opções, massas, bordas, preços, limites e regras relevantes; não inclui
+timestamps, auditoria nem versão física do banco.
+
+## GET `/api/v1/table-device/menu/availability`
+
+Auth: device. Suporta `If-None-Match` próprio no formato
+`"availability-{availabilityVersion}-schema-1"` e `knownAvailabilityVersion`. Retorna overlay de
+ingredientes, produtos e variantes com disponibilidade explícita/efetiva e `reasonCode`. Retorna 304
+quando não mudou. Se `catalogVersion` informado pelo cliente não for a revisão corrente, retorna 409
+`CATALOG_VERSION_MISMATCH`, levando o tablet a buscar o menu completo.
 
 ## GET `/api/v1/table-device/menu/products/{productId}`
 
@@ -465,9 +487,21 @@ Erros:
 
 Retorna grupos/restrições do combo.
 
+Combo dentro de combo retorna configuração inválida e nunca integra uma revisão consumível no MVP.
+
+## GET `/api/v1/table-device/media-assets/{assetId}/content`
+
+Auth: device. A API valida credencial, tenant, ownership, estado `ready` e referência pela revisão
+publicada antes de fazer streaming via `IObjectStorage`. O tablet nunca recebe bucket, object key ou
+credenciais do provider. Suporta `If-None-Match` baseado no checksum. Falhas usam
+`MEDIA_ASSET_NOT_FOUND` ou `MEDIA_ASSET_NOT_PUBLISHED`, sem revelar recurso cross-tenant.
+
 ---
 
 # 8. Simulação do carrinho
+
+Este contrato pertence à Fase 4. Na Fase 3 não há endpoint de mutação/simulação do carrinho, Order,
+reserva ou envio: o carrinho é local e valores são estimativas não autoritativas.
 
 ## POST `/api/v1/table-device/cart/simulate`
 

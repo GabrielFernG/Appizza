@@ -35,6 +35,22 @@ os binários ficam no object storage.
 
 Sem microsserviços, Kubernetes, broker ou Redis obrigatórios no MVP.
 
+## Menu e estado local da Fase 3
+
+O Appizza.Table usa SQLite exclusivamente para cache e estado local. A versão física usa
+`PRAGMA user_version` e migrations incrementais transacionais. O cache ativo é instalado por troca
+atômica e identificado por tenant, device, `schemaVersion`, `catalogVersion` e
+`availabilityVersion`; carrinho inclui também a sessão. Mantêm-se, quando possível, catálogo atual e
+imediatamente anterior apenas para recuperação.
+
+Mídia é obtida por endpoint autenticado da API e armazenada com checksum e LRU. Limite inicial é 512
+MB, configurável, sujeito a espaço livre mínimo do dispositivo. O tablet não conhece bucket, chave,
+credenciais S3 ou SeaweedFS.
+
+SignalR invalida; não transporta catálogo nem é fonte de verdade. O fluxo confiável é persistência,
+Outbox, dispatcher, SignalR e reconciliação por GET. Startup, resume, foreground, reconexão e
+revalidação periódica detectam mensagens perdidas.
+
 ## Decisões confirmadas pela validação da Fase 1
 
 - O pipeline JWT preserva os nomes originais dos claims (`MapInboundClaims = false`), inclusive `sub`,

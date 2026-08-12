@@ -57,6 +57,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
 });
 builder.Services.AddAuthorization();
 builder.Services.AddSignalR();
+builder.Services.AddHostedService<CatalogSignalRDispatcher>();
 builder.Services.AddRateLimiter(options => options.AddFixedWindowLimiter("authentication", limiter =>
 {
     limiter.PermitLimit = builder.Configuration.GetValue("AuthenticationRateLimit:PermitLimit", 10);
@@ -120,6 +121,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 app.MapPhase1Endpoints();
 app.MapPhase2Endpoints();
+app.MapPhase3Endpoints();
 app.MapHub<Phase1Hub>("/hubs/v1/updates");
 
 app.Run();

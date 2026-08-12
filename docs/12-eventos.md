@@ -461,6 +461,19 @@ Pode ser interno ou UI notification.
 Eventos de disponibilidade carregam `availabilityVersion`, disponibilidade explícita e efetiva.
 Só são emitidos quando houver mudança real persistida.
 
+## Notificações de menu da Fase 3
+
+O dispatcher da Outbox traduz fatos persistidos em notificações pequenas:
+
+```json
+{ "type": "CatalogPublished", "catalogVersion": 43 }
+{ "type": "CatalogAvailabilityChanged", "availabilityVersion": 20 }
+```
+
+O tablet não aplica o payload como verdade: invalida o cache correspondente e consulta a API. Perda,
+duplicação, reordenação ou salto de versão são recuperados por startup, reconexão, resume,
+foreground e reconciliação periódica. O catálogo completo nunca trafega por SignalR.
+
 ---
 
 # 11. Payments

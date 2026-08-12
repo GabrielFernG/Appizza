@@ -95,3 +95,19 @@ Fechamento dos checkpoints:
   aprovadas;
 - nenhum item de menu/cache/carrinho do Appizza.Table, UI administrativa do Appizza.Operations ou
   funcionalidade da Fase 3 foi antecipado.
+
+## Fase 3 — Tablet menu + carrinho
+
+Status: **concluída e formalmente aprovada em 2026-08-12**.
+
+Escopo: read model público da revisão publicada, overlay independente de disponibilidade, ETag
+composto, schema 1, hash semântico, mídia autenticada, SignalR como invalidação, SQLite/cache LRU,
+offline/reconciliação, UX MAUI de menu e configuração completa e carrinho local por sessão.
+
+Fechamento dos checkpoints:
+- **A — Menu Contract & Server Read Model:** concluído e aprovado;
+- **B — SQLite & Synchronization:** concluído e aprovado;
+- **C — Appizza.Table Menu & Configuration UX:** concluído e aprovado.
+
+Não pertencem à Fase 3: `/cart/simulate` autoritativo, Order, `POST /orders`, reserva, envio/fila
+offline, Promotions, Kitchen, Payments e qualquer funcionalidade da Fase 4 ou posterior.

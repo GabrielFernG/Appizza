@@ -364,6 +364,8 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
     }
 
     public Task<HttpResponseMessage> GetAsync(string path, string token) => SendAsync(HttpMethod.Get, path, null, token, false);
+    public async Task<HttpResponseMessage> GetConditionalAsync(string path, string token, string etag)
+    { using var request = new HttpRequestMessage(HttpMethod.Get, path); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token); request.Headers.TryAddWithoutValidation("If-None-Match", etag); return await _client!.SendAsync(request); }
     public async Task<JsonDocument> GetJsonAsync(string path, string token)
     {
         var response = await GetAsync(path, token);
