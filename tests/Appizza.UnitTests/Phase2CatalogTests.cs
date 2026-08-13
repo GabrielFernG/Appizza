@@ -36,3 +36,22 @@ public sealed class Phase2CatalogTests
         Assert.Throws<ArgumentException>(() => PizzaPricing.EqualFractionBasePrice([]));
     }
 }
+
+public sealed class Phase3PublishedMenuTests
+{
+    [Fact]
+    public void SemanticHashIsDeterministicAndIgnoresTechnicalFields()
+    {
+        using var first = System.Text.Json.JsonDocument.Parse("""{"name":"Pizza","price":40.00,"updatedAt":"2026-01-01T00:00:00Z"}""");
+        using var reordered = System.Text.Json.JsonDocument.Parse("""{"updatedAt":"2027-01-01T00:00:00Z","price":40,"name":"Pizza"}""");
+        Assert.Equal(SemanticConfigurationHash.Compute(first.RootElement), SemanticConfigurationHash.Compute(reordered.RootElement));
+    }
+
+    [Fact]
+    public void SemanticChangeChangesHash()
+    {
+        using var first = System.Text.Json.JsonDocument.Parse("""{"name":"Pizza","price":40}""");
+        using var changed = System.Text.Json.JsonDocument.Parse("""{"name":"Pizza","price":41}""");
+        Assert.NotEqual(SemanticConfigurationHash.Compute(first.RootElement), SemanticConfigurationHash.Compute(changed.RootElement));
+    }
+}

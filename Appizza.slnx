@@ -9,6 +9,7 @@
     <Project Path="src/BuildingBlocks/Appizza.Persistence/Appizza.Persistence.csproj" />
   </Folder>
   <Folder Name="/src/Clients/">
+    <Project Path="src/Clients/Appizza.Table.Core/Appizza.Table.Core.csproj" />
     <Project Path="src/Clients/Appizza.Table/Appizza.Table.csproj" />
   </Folder>
   <Folder Name="/src/Modules/">

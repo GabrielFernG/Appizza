@@ -27,3 +27,14 @@ Matriz inicial:
 - Cozinha: nenhuma permissão administrativa da Fase 1.
 
 Senha e PIN usam `PasswordHasher<TUser>`. PIN tem limitação de tentativas. Access tokens são curtos; refresh tokens são opacos, rotativos e armazenados somente como hash. `TemporaryApproval` permanece fora da Fase 1.
+
+## Matriz incremental da Fase 4
+
+Permissões no escopo do estabelecimento:
+- `kitchen.queue.view`: consultar estações e fila;
+- `kitchen.production.view`: consultar detalhe de ProductionItem;
+- `kitchen.production.accept`: aceitar ProductionItem aguardando aceite.
+
+Administrador e Gerente recebem as três permissões. Cozinha recebe as três. Os demais perfis não
+as recebem por padrão. A precedência RBAC e o isolamento por estabelecimento definidos na Fase 1
+continuam obrigatórios.

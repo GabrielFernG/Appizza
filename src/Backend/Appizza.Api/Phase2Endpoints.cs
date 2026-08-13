@@ -7,7 +7,6 @@ using Appizza.Modules.Identity;
 using Appizza.Modules.Media;
 using Appizza.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.SignalR;
 
 namespace Appizza.Api;
 
@@ -191,7 +190,7 @@ public static class Phase2Endpoints
     private static async Task<IResult> ValidateCatalog(ClaimsPrincipal principal, AppizzaDbContext db, CancellationToken ct)
     { var denied = await Authorize(principal, db, "catalog.read", ct); if (denied is not null) return denied; var errors = await ValidationErrors(db, Tenant(principal), ct); return Results.Ok(new { valid = errors.Count == 0, errors }); }
 
-    private static async Task<IResult> PublishCatalog(HttpRequest request, ClaimsPrincipal principal, AppizzaDbContext db, IHubContext<Phase1Hub> hub, CancellationToken ct)
+    private static async Task<IResult> PublishCatalog(HttpRequest request, ClaimsPrincipal principal, AppizzaDbContext db, CancellationToken ct)
     {
         var denied = await Authorize(principal, db, "catalog.publish", ct); if (denied is not null) return denied; if (!request.Headers.TryGetValue("Idempotency-Key", out var key) || string.IsNullOrWhiteSpace(key)) return Error(400, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key é obrigatório.");
         var tenant = Tenant(principal); await using var tx = await db.Database.BeginTransactionAsync(ct); await db.Database.ExecuteSqlInterpolatedAsync($"select pg_advisory_xact_lock(hashtextextended({tenant.ToString()}, 0))", ct);
@@ -200,7 +199,7 @@ public static class Phase2Endpoints
         if (errors.Count > 0) { var rejected = new CatalogRevision { Id = Guid.NewGuid(), EstablishmentId = tenant, Status = "rejected", Snapshot = snapshot, SemanticHash = hash, ValidationErrors = JsonSerializer.Serialize(errors), CreatedAt = now, PublishedBy = UserId(principal) }; db.Add(rejected); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return Error(422, "CATALOG_VALIDATION_FAILED", "O catálogo contém erros."); }
         var current = state.CurrentPublishedRevisionId is Guid currentId ? await db.Set<CatalogRevision>().SingleAsync(x => x.Id == currentId, ct) : null; if (current?.SemanticHash == hash) return Error(409, "CATALOG_NO_CHANGES_TO_PUBLISH", "Não há alterações semânticas para publicar.");
         if (db.Entry(state).State == EntityState.Detached) db.Add(state); if (current is not null) { current.Status = "superseded"; current.SupersededAt = now; }
-        var revision = new CatalogRevision { Id = Guid.NewGuid(), EstablishmentId = tenant, CatalogVersion = state.CatalogVersion + 1, Status = "published", Snapshot = snapshot, SemanticHash = hash, CreatedAt = now, PublishedAt = now, PublishedBy = UserId(principal) }; state.CatalogVersion++; state.CurrentPublishedRevisionId = revision.Id; state.UpdatedAt = now; db.Add(revision); AddOutbox(db, tenant, "catalog-published.v1", new { catalogRevisionId = revision.Id, catalogVersion = state.CatalogVersion, semanticHash = hash }, UserId(principal)); var payload = JsonSerializer.Serialize(new { catalogRevisionId = revision.Id, catalogVersion = state.CatalogVersion, semanticHash = hash, publishedAt = now }); db.Add(new IdempotencyRecord { IdempotencyKey = key.ToString(), EstablishmentId = tenant, OperationType = "catalog.publish", RequestHash = hash, ResponseStatus = 200, ResponsePayload = payload, CreatedAt = now }); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); await hub.Clients.Group($"establishment:{tenant}").SendAsync("CatalogPublished", new { catalogVersion = state.CatalogVersion }, ct); return Results.Content(payload, "application/json");
+        var revision = new CatalogRevision { Id = Guid.NewGuid(), EstablishmentId = tenant, CatalogVersion = state.CatalogVersion + 1, Status = "published", Snapshot = snapshot, SemanticHash = hash, CreatedAt = now, PublishedAt = now, PublishedBy = UserId(principal) }; state.CatalogVersion++; state.CurrentPublishedRevisionId = revision.Id; state.UpdatedAt = now; db.Add(revision); AddOutbox(db, tenant, "catalog-published.v1", new { catalogRevisionId = revision.Id, catalogVersion = state.CatalogVersion, semanticHash = hash }, UserId(principal)); var payload = JsonSerializer.Serialize(new { catalogRevisionId = revision.Id, catalogVersion = state.CatalogVersion, semanticHash = hash, publishedAt = now }); db.Add(new IdempotencyRecord { IdempotencyKey = key.ToString(), EstablishmentId = tenant, OperationType = "catalog.publish", RequestHash = hash, ResponseStatus = 200, ResponsePayload = payload, CreatedAt = now }); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return Results.Content(payload, "application/json");
     }
 
     private static async Task<IResult> CurrentPublication(ClaimsPrincipal principal, AppizzaDbContext db, CancellationToken ct)

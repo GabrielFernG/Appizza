@@ -35,3 +35,11 @@ No segundo modo, mesa fica AwaitingCleaning e só volta a Available após confir
 - O número da sessão usa sequence PostgreSQL; a apresentação combina a data local do estabelecimento e o valor da sequence. Gaps são aceitos.
 - Retenção de CPF é configuração obrigatória para coleta em produção; o Worker anonimiza dados expirados.
 - `SessionTransfer` permanece fora da Fase 1.
+
+## Decisões da Fase 3
+
+Cache e carrinho locais são segregados por estabelecimento, dispositivo e, para carrinho, sessão.
+Reset, revogação ou reconfiguração tornam dados do contexto anterior imediatamente inacessíveis ao
+fluxo ativo. Carrinho antigo pode ser retido por sete dias para recuperação/diagnóstico, sempre como
+`session_mismatch` e sem possibilidade de envio automático. Offline permite navegação e edição local,
+mas não simulação autoritativa, reserva ou envio de pedido.

@@ -22,6 +22,10 @@ namespace Appizza.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.HasSequence("order_number_seq", "ordering");
+
+            modelBuilder.HasSequence("production_queue_position_seq", "kitchen");
+
             modelBuilder.HasSequence("table_session_number_seq", "tables");
 
             modelBuilder.Entity("Appizza.Modules.Catalog.CatalogRevision", b =>
@@ -2813,6 +2817,197 @@ namespace Appizza.Persistence.Migrations
                     b.ToTable("user_session", "identity");
                 });
 
+            modelBuilder.Entity("Appizza.Modules.Kitchen.ProductionItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<Guid?>("AcceptedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("accepted_by_user_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<Guid>("OrderItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_item_id");
+
+                    b.Property<long>("QueuePosition")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("queue_position")
+                        .HasDefaultValueSql("nextval('kitchen.production_queue_position_seq')");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("received_at");
+
+                    b.Property<bool>("RequiresProduction")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requires_production");
+
+                    b.Property<Guid>("StationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("station_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderItemId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_production_item_order_item_id");
+
+                    b.HasIndex("StationId")
+                        .HasDatabaseName("ix_production_item_station_id");
+
+                    b.HasIndex("EstablishmentId", "StationId", "Status", "QueuePosition")
+                        .HasDatabaseName("ix_production_item_establishment_id_station_id_status_queue_po~");
+
+                    b.ToTable("production_item", "kitchen", t =>
+                        {
+                            t.HasCheckConstraint("ck_production_item_phase4_status", "status in ('awaiting_acceptance','accepted','awaiting_preparation')");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Kitchen.ProductionStatusHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("changed_at");
+
+                    b.Property<Guid?>("CorrelationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<string>("NewStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("new_status");
+
+                    b.Property<string>("PreviousStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("previous_status");
+
+                    b.Property<Guid>("ProductionItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("production_item_id");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductionItemId", "ChangedAt")
+                        .HasDatabaseName("ix_production_status_history_production_item_id_changed_at");
+
+                    b.ToTable("production_status_history", "kitchen");
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Kitchen.Station", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int?>("DefaultTargetMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("default_target_minutes");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("display_order");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("StationType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("station_type");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EstablishmentId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_station_establishment_id")
+                        .HasFilter("is_default and status = 'active'");
+
+                    b.HasIndex("EstablishmentId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_station_establishment_id_name");
+
+                    b.ToTable("station", "kitchen", t =>
+                        {
+                            t.HasCheckConstraint("ck_station_status", "status in ('active','inactive')");
+                        });
+                });
+
             modelBuilder.Entity("Appizza.Modules.Media.MediaAsset", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2903,6 +3098,567 @@ namespace Appizza.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_media_asset_status", "status in ('pending_upload','ready','failed','archived')");
                         });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.CartSimulation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long>("AvailabilityVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("availability_version");
+
+                    b.Property<bool>("CanSubmit")
+                        .HasColumnType("boolean")
+                        .HasColumnName("can_submit");
+
+                    b.Property<Guid>("CatalogRevisionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("catalog_revision_id");
+
+                    b.Property<long>("CatalogVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("catalog_version");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<string>("IntentSnapshot")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("intent_snapshot");
+
+                    b.Property<Guid>("LocalCartId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("local_cart_id");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("request_hash");
+
+                    b.Property<bool>("RequiresReview")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requires_review");
+
+                    b.Property<string>("ResultSnapshot")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("result_snapshot");
+
+                    b.Property<string>("SimulationVersion")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("simulation_version");
+
+                    b.Property<Guid>("SourceDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_device_id");
+
+                    b.Property<Guid>("TableSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("table_session_id");
+
+                    b.Property<DateTimeOffset>("ValidUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("valid_until");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceDeviceId")
+                        .HasDatabaseName("ix_cart_simulation_source_device_id");
+
+                    b.HasIndex("TableSessionId")
+                        .HasDatabaseName("ix_cart_simulation_table_session_id");
+
+                    b.HasIndex("EstablishmentId", "TableSessionId", "ValidUntil")
+                        .HasDatabaseName("ix_cart_simulation_establishment_id_table_session_id_valid_unt~");
+
+                    b.HasIndex("EstablishmentId", "SourceDeviceId", "LocalCartId", "CreatedAt")
+                        .HasDatabaseName("ix_cart_simulation_establishment_id_source_device_id_local_car~");
+
+                    b.ToTable("cart_simulation", "ordering", t =>
+                        {
+                            t.HasCheckConstraint("ck_cart_simulation_versions", "catalog_version >= 0 and availability_version >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.Order", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClientSubmissionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_submission_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("discount_amount");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<long>("OrderNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("order_number")
+                        .HasDefaultValueSql("nextval('ordering.order_number_seq')");
+
+                    b.Property<Guid>("SourceDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_device_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<decimal>("SubtotalAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("subtotal_amount");
+
+                    b.Property<Guid>("TableSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("table_session_id");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("total_amount");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_customer_order_order_number");
+
+                    b.HasIndex("SourceDeviceId")
+                        .HasDatabaseName("ix_customer_order_source_device_id");
+
+                    b.HasIndex("TableSessionId")
+                        .HasDatabaseName("ix_customer_order_table_session_id");
+
+                    b.HasIndex("EstablishmentId", "SourceDeviceId", "ClientSubmissionId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_customer_order_establishment_id_source_device_id_client_sub~");
+
+                    b.HasIndex("EstablishmentId", "TableSessionId", "SubmittedAt")
+                        .HasDatabaseName("ix_customer_order_establishment_id_table_session_id_submitted_~");
+
+                    b.ToTable("customer_order", "ordering", t =>
+                        {
+                            t.HasCheckConstraint("ck_customer_order_amounts", "subtotal_amount >= 0 and discount_amount = 0 and total_amount >= 0");
+
+                            t.HasCheckConstraint("ck_customer_order_status", "status in ('submitted')");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long>("AvailabilityVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("availability_version");
+
+                    b.Property<Guid>("CatalogRevisionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("catalog_revision_id");
+
+                    b.Property<long>("CatalogVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("catalog_version");
+
+                    b.Property<string>("CommercialStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("commercial_status");
+
+                    b.Property<string>("ConfigurationVersion")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("configuration_version");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("LocalCartItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("local_cart_item_id");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("character varying(180)")
+                        .HasColumnName("product_name");
+
+                    b.Property<string>("ProductType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("product_type");
+
+                    b.Property<Guid?>("ProductVariantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_variant_id");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.Property<string>("Snapshot")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("snapshot");
+
+                    b.Property<int>("SnapshotSchemaVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("snapshot_schema_version");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("total_amount");
+
+                    b.Property<decimal>("UnitAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("unit_amount");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("VariantName")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("variant_name");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId", "LocalCartItemId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_order_item_order_id_local_cart_item_id");
+
+                    b.ToTable("order_item", "ordering", t =>
+                        {
+                            t.HasCheckConstraint("ck_order_item_quantity", "quantity > 0");
+
+                            t.HasCheckConstraint("ck_order_item_status", "commercial_status in ('submitted','partially_cancelled','cancelled','completed')");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemComboSelection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ComboGroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("combo_group_id");
+
+                    b.Property<Guid>("ComboGroupItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("combo_group_item_id");
+
+                    b.Property<decimal>("ComponentAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("component_amount");
+
+                    b.Property<string>("Configuration")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("configuration");
+
+                    b.Property<Guid>("OrderItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_item_id");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid?>("SelectedProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("selected_product_id");
+
+                    b.Property<Guid?>("SelectedVariantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("selected_variant_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderItemId", "ComboGroupId", "ComboGroupItemId", "SelectedProductId", "SelectedVariantId")
+                        .HasDatabaseName("ix_order_item_combo_selection_order_item_id_combo_group_id_com~");
+
+                    b.ToTable("order_item_combo_selection", "ordering");
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemIngredient", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("action");
+
+                    b.Property<decimal>("AdditionalAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("additional_amount");
+
+                    b.Property<Guid>("IngredientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ingredient_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("OrderItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_item_id");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(12, 3)
+                        .HasColumnType("numeric(12,3)")
+                        .HasColumnName("quantity");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderItemId", "IngredientId", "Action")
+                        .IsUnique()
+                        .HasDatabaseName("ix_order_item_ingredient_order_item_id_ingredient_id_action");
+
+                    b.ToTable("order_item_ingredient", "ordering");
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemNote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("note");
+
+                    b.Property<Guid>("OrderItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_item_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderItemId", "Position")
+                        .IsUnique()
+                        .HasDatabaseName("ix_order_item_note_order_item_id_position");
+
+                    b.ToTable("order_item_note", "ordering");
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("AdditionalAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("additional_amount");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("OptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("option_id");
+
+                    b.Property<Guid>("OrderItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_item_id");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderItemId", "OptionId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_order_item_option_order_item_id_option_id");
+
+                    b.ToTable("order_item_option", "ordering");
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemPizzaConfiguration", b =>
+                {
+                    b.Property<Guid>("OrderItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_item_id");
+
+                    b.Property<Guid?>("CrustId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("crust_id");
+
+                    b.Property<string>("CrustName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("crust_name");
+
+                    b.Property<Guid?>("DoughId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("dough_id");
+
+                    b.Property<string>("DoughName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("dough_name");
+
+                    b.Property<int>("FractionCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("fraction_count");
+
+                    b.Property<Guid>("SizeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("size_id");
+
+                    b.Property<string>("SizeName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("size_name");
+
+                    b.HasKey("OrderItemId");
+
+                    b.ToTable("order_item_pizza_configuration", "ordering");
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemPizzaFraction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Configuration")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("configuration");
+
+                    b.Property<Guid?>("FlavorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("flavor_id");
+
+                    b.Property<string>("FlavorName")
+                        .HasColumnType("text")
+                        .HasColumnName("flavor_name");
+
+                    b.Property<int>("FractionDenominator")
+                        .HasColumnType("integer")
+                        .HasColumnName("fraction_denominator");
+
+                    b.Property<int>("FractionNumerator")
+                        .HasColumnType("integer")
+                        .HasColumnName("fraction_numerator");
+
+                    b.Property<bool>("IsCustom")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_custom");
+
+                    b.Property<Guid>("OrderItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_item_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<decimal>("ReferenceAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("reference_amount");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderItemId", "Position")
+                        .IsUnique()
+                        .HasDatabaseName("ix_order_item_pizza_fraction_order_item_id_position");
+
+                    b.ToTable("order_item_pizza_fraction", "ordering");
                 });
 
             modelBuilder.Entity("Appizza.Modules.Tables.DiningTable", b =>
@@ -3315,15 +4071,10 @@ namespace Appizza.Persistence.Migrations
 
             modelBuilder.Entity("Appizza.Persistence.IdempotencyRecord", b =>
                 {
-                    b.Property<string>("IdempotencyKey")
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
-                        .HasColumnName("idempotency_key");
-
-                    b.Property<string>("OperationType")
-                        .HasMaxLength(160)
-                        .HasColumnType("character varying(160)")
-                        .HasColumnName("operation_type");
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -3336,6 +4087,18 @@ namespace Appizza.Persistence.Migrations
                     b.Property<DateTimeOffset?>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<string>("OperationType")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("operation_type");
 
                     b.Property<string>("RequestHash")
                         .IsRequired()
@@ -3351,7 +4114,17 @@ namespace Appizza.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("response_status");
 
-                    b.HasKey("IdempotencyKey", "OperationType");
+                    b.HasKey("Id");
+
+                    b.HasIndex("OperationType", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_idempotency_record_operation_type_idempotency_key")
+                        .HasFilter("establishment_id is null");
+
+                    b.HasIndex("EstablishmentId", "OperationType", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_idempotency_record_establishment_id_operation_type_idempote~")
+                        .HasFilter("establishment_id is not null");
 
                     b.ToTable("idempotency_record", "integration");
                 });
@@ -4033,11 +4806,155 @@ namespace Appizza.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Appizza.Modules.Kitchen.ProductionItem", b =>
+                {
+                    b.HasOne("Appizza.Modules.Establishments.Establishment", null)
+                        .WithMany()
+                        .HasForeignKey("EstablishmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Ordering.OrderItem", null)
+                        .WithOne()
+                        .HasForeignKey("Appizza.Modules.Kitchen.ProductionItem", "OrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Kitchen.Station", null)
+                        .WithMany()
+                        .HasForeignKey("StationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Kitchen.ProductionStatusHistory", b =>
+                {
+                    b.HasOne("Appizza.Modules.Kitchen.ProductionItem", null)
+                        .WithMany()
+                        .HasForeignKey("ProductionItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Kitchen.Station", b =>
+                {
+                    b.HasOne("Appizza.Modules.Establishments.Establishment", null)
+                        .WithMany()
+                        .HasForeignKey("EstablishmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Appizza.Modules.Media.MediaAsset", b =>
                 {
                     b.HasOne("Appizza.Modules.Establishments.Establishment", null)
                         .WithMany()
                         .HasForeignKey("EstablishmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.CartSimulation", b =>
+                {
+                    b.HasOne("Appizza.Modules.Establishments.Establishment", null)
+                        .WithMany()
+                        .HasForeignKey("EstablishmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Devices.Device", null)
+                        .WithMany()
+                        .HasForeignKey("SourceDeviceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Tables.TableSession", null)
+                        .WithMany()
+                        .HasForeignKey("TableSessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.Order", b =>
+                {
+                    b.HasOne("Appizza.Modules.Establishments.Establishment", null)
+                        .WithMany()
+                        .HasForeignKey("EstablishmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Devices.Device", null)
+                        .WithMany()
+                        .HasForeignKey("SourceDeviceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Tables.TableSession", null)
+                        .WithMany()
+                        .HasForeignKey("TableSessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItem", b =>
+                {
+                    b.HasOne("Appizza.Modules.Ordering.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemComboSelection", b =>
+                {
+                    b.HasOne("Appizza.Modules.Ordering.OrderItem", null)
+                        .WithMany()
+                        .HasForeignKey("OrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemIngredient", b =>
+                {
+                    b.HasOne("Appizza.Modules.Ordering.OrderItem", null)
+                        .WithMany()
+                        .HasForeignKey("OrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemNote", b =>
+                {
+                    b.HasOne("Appizza.Modules.Ordering.OrderItem", null)
+                        .WithMany()
+                        .HasForeignKey("OrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemOption", b =>
+                {
+                    b.HasOne("Appizza.Modules.Ordering.OrderItem", null)
+                        .WithMany()
+                        .HasForeignKey("OrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemPizzaConfiguration", b =>
+                {
+                    b.HasOne("Appizza.Modules.Ordering.OrderItem", null)
+                        .WithOne()
+                        .HasForeignKey("Appizza.Modules.Ordering.OrderItemPizzaConfiguration", "OrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemPizzaFraction", b =>
+                {
+                    b.HasOne("Appizza.Modules.Ordering.OrderItem", null)
+                        .WithMany()
+                        .HasForeignKey("OrderItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

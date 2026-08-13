@@ -45,7 +45,7 @@ internal sealed class IdempotencyRecordConfiguration : IEntityTypeConfiguration<
     public void Configure(EntityTypeBuilder<IdempotencyRecord> builder)
     {
         builder.ToTable("idempotency_record", "integration");
-        builder.HasKey(x => new { x.IdempotencyKey, x.OperationType });
+        builder.HasKey(x => x.Id);
         builder.Property(x => x.IdempotencyKey).HasColumnName("idempotency_key").HasMaxLength(120);
         builder.Property(x => x.EstablishmentId).HasColumnName("establishment_id");
         builder.Property(x => x.OperationType).HasColumnName("operation_type").HasMaxLength(160);
@@ -54,5 +54,7 @@ internal sealed class IdempotencyRecordConfiguration : IEntityTypeConfiguration<
         builder.Property(x => x.ResponsePayload).HasColumnName("response_payload").HasColumnType("jsonb");
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.Property(x => x.ExpiresAt).HasColumnName("expires_at");
+        builder.HasIndex(x => new { x.EstablishmentId, x.OperationType, x.IdempotencyKey }).IsUnique().HasFilter("establishment_id is not null");
+        builder.HasIndex(x => new { x.OperationType, x.IdempotencyKey }).IsUnique().HasFilter("establishment_id is null");
     }
 }

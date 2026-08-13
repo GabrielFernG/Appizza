@@ -11,6 +11,9 @@ public partial class App : Application
 
 	protected override Window CreateWindow(IActivationState? activationState)
 	{
-		return new Window(new AppShell());
+		var window = new Window(new AppShell());
+		window.Resumed += async (_, _) => await TableRuntime.ReconcileAsync(Appizza.Table.Core.ReconciliationTrigger.Resume);
+		window.Activated += async (_, _) => await TableRuntime.ReconcileAsync(Appizza.Table.Core.ReconciliationTrigger.Foreground);
+		return window;
 	}
 }

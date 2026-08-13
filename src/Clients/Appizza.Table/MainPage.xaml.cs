@@ -85,7 +85,11 @@ public partial class MainPage : ContentPage
             var body = await response.Content.ReadAsStringAsync();
             response.EnsureSuccessStatusCode();
             using var json = JsonDocument.Parse(body);
-            Status.Text = $"Sessão {json.RootElement.GetProperty("session").GetProperty("number").GetString()} pronta.";
+            var session = json.RootElement.GetProperty("session");
+            var sessionId = session.GetProperty("id").GetGuid();
+            await TableRuntime.ActivateAsync(Http.BaseAddress!, _deviceAccessToken, TableRuntime.TenantFromToken(_deviceAccessToken), _deviceId, sessionId);
+            Status.Text = $"Sessão {session.GetProperty("number").GetString()} pronta.";
+            await Shell.Current.GoToAsync(nameof(MenuPage));
         }
         catch (Exception exception)
         {

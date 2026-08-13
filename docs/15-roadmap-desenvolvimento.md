@@ -95,3 +95,57 @@ Fechamento dos checkpoints:
   aprovadas;
 - nenhum item de menu/cache/carrinho do Appizza.Table, UI administrativa do Appizza.Operations ou
   funcionalidade da Fase 3 foi antecipado.
+
+## Fase 3 — Tablet menu + carrinho
+
+Status: **concluída e formalmente aprovada em 2026-08-12**.
+
+Escopo: read model público da revisão publicada, overlay independente de disponibilidade, ETag
+composto, schema 1, hash semântico, mídia autenticada, SignalR como invalidação, SQLite/cache LRU,
+offline/reconciliação, UX MAUI de menu e configuração completa e carrinho local por sessão.
+
+Fechamento dos checkpoints:
+- **A — Menu Contract & Server Read Model:** concluído e aprovado;
+- **B — SQLite & Synchronization:** concluído e aprovado;
+- **C — Appizza.Table Menu & Configuration UX:** concluído e aprovado.
+
+Não pertencem à Fase 3: `/cart/simulate` autoritativo, Order, `POST /orders`, reserva, envio/fila
+offline, Promotions, Kitchen, Payments e qualquer funcionalidade da Fase 4 ou posterior.
+
+## Fase 4 — Ordering + Kitchen
+
+Status: **concluída e formalmente aprovada em 2026-08-12**.
+
+Objetivo: transformar a intenção do carrinho em pedido historicamente imutável, com preço e
+configuração revalidados pelo servidor, submissão idempotente e intake assíncrono de todos os itens
+na fila operacional da cozinha.
+
+Fechamento dos checkpoints:
+- **A — Documentação e decisões:** concluído e aprovado, com contratos, modelo, eventos, RBAC e ADRs consolidados;
+- **B — Ordering Simulation:** concluído e aprovado, incluindo simulação autoritativa persistida, pricing e revalidação;
+- **C — Idempotent Order Submission:** concluído e aprovado, incluindo pedido, snapshots, totais da sessão, idempotência e concorrência;
+- **D — Kitchen Intake:** concluído e aprovado, incluindo estação, ProductionItem, consumidor Inbox e FIFO;
+- **E — Kitchen Acceptance & Realtime:** concluído e aprovado, incluindo fila, detalhe, aceite, RBAC, SignalR e UI operacional mínima;
+- **F — Appizza.Table Submission UX:** concluído e aprovado, incluindo simulação, review, envio, `submission_unknown` e reconciliação;
+- **G — Auditoria final:** concluído e aprovado, com a matriz integral de testes, builds e auditoria de escopo verdes;
+- matriz residual encerrada com **pendências obrigatórias = 0**.
+
+Entregáveis:
+- `ordering.cart_simulation` temporária, sem reserva, com validade configurável (300 segundos por
+  padrão) e snapshots JSONB de intenção e resultado;
+- `/cart/simulate` autoritativo e `POST /orders` com `Idempotency-Key`, `clientSubmissionId` e
+  confirmação versionada de revisão;
+- Order e OrderItems com configurações estruturadas, snapshot JSONB completo e imutável e número
+  obtido de sequence PostgreSQL global;
+- combo `fixed_price` ou `calculated`, pizzas de divisões iguais e Monte sua Pizza conforme as regras
+  publicadas, sempre recalculados no servidor;
+- Station default por estabelecimento, intake eventual de todo OrderItem em um ProductionItem e fila
+  FIFO;
+- aceite `awaiting_acceptance -> accepted -> awaiting_preparation`, sem iniciar preparo;
+- Outbox multi-consumer com conclusão individual em Inbox e finalização do evento somente após
+  todos os consumidores registrados;
+- UI operacional mínima no Appizza.Operations e fluxo de submissão/reconciliação no Appizza.Table.
+
+Não pertencem à Fase 4: cancelamento ou alteração de pedido, rejeição da cozinha, preparo,
+pausa, restart, Ready, entrega, contestação, fechamento de sessão, Promotions, Payments, Delivery
+ou qualquer funcionalidade da Fase 5 ou posterior.

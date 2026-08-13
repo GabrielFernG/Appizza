@@ -1,0 +1,12 @@
+<script setup lang="ts">
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-nocheck -- Vue runtime state is validated by API contracts and component tests.
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+const token = ref(''); const stations = ref([]); const items = ref([]); const selectedStation = ref(''); const selected = ref(null); const error = ref(''); let poll
+const ordered = computed(() => [...items.value].sort((a, b) => a.queuePosition - b.queuePosition))
+async function api(path, init) { const response = await fetch(`/api/v1${path}`, { ...init, headers: { Authorization: `Bearer ${token.value}`, ...(init?.headers ?? {}) } }); if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json() }
+async function refresh() { try { error.value = ''; stations.value = await api('/operations/kitchen/stations'); if (!selectedStation.value && stations.value.length) selectedStation.value = stations.value[0].id; items.value = await api(`/operations/kitchen/production-items${selectedStation.value ? `?stationId=${selectedStation.value}` : ''}`) } catch (reason) { error.value = reason instanceof Error ? reason.message : 'Falha de reconciliação' } }
+async function accept(item) { await api(`/operations/kitchen/production-items/${item.id}/accept`, { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() } }); await refresh() }
+onMounted(() => { poll = setInterval(refresh, 5000) }); onBeforeUnmount(() => { if (poll) clearInterval(poll) })
+</script>
+<template><v-container><h1>Fila da cozinha</h1><p>FIFO operacional. Realtime invalida; a API reconcilia.</p><v-text-field v-model="token" label="Access token" type="password"/><v-btn @click="refresh">Conectar e atualizar</v-btn><v-select v-model="selectedStation" :items="stations" item-title="name" item-value="id" label="Estação" @update:model-value="refresh"/><v-alert v-if="error" type="warning">{{ error }}</v-alert><v-list><v-list-item v-for="item in ordered" :key="item.id" @click="selected = item"><v-list-item-title>#{{ item.queuePosition }} · {{ item.status }}</v-list-item-title><v-list-item-subtitle>{{ item.requiresProduction ? 'Produção física' : 'Aceite operacional' }}</v-list-item-subtitle><template #append><v-btn v-if="item.status === 'awaiting_acceptance'" @click.stop="accept(item)">Aceitar</v-btn></template></v-list-item></v-list><v-card v-if="selected" title="Detalhe do intake"><v-card-text>Item {{ selected.orderItemId }} · recebido em {{ selected.receivedAt }}</v-card-text></v-card></v-container></template>

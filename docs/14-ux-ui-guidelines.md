@@ -10,6 +10,16 @@ Tablet:
 - modo quiosque;
 - cache de mídia.
 
+Fase 3:
+- produto indisponível permanece visível, marcado e não selecionável;
+- categoria sem produto efetivamente visível é ocultada;
+- mudança durante configuração não fecha a tela nem escolhe alternativa: destaca a seleção e exige
+  revisão;
+- estado offline e instante da última sincronização são perceptíveis;
+- sem cache compatível, mostrar indisponibilidade/retry;
+- preços do menu/carrinho são identificados como estimativas até validação do servidor;
+- mídia ausente usa placeholder e não bloqueia navegação.
+
 Status:
 card resumido clicável -> detalhamento por item.
 

@@ -43,6 +43,18 @@ Providers de pagamento.
 ## Frontend
 Componentes, stores e fluxos críticos.
 
+### Baseline obrigatória da Fase 3
+
+- ETag composto, 304 e overlay incremental de disponibilidade;
+- PostgreSQL/Testcontainers para leitura consistente, device auth e cross-tenant;
+- SQLite real para migrations, cache atômico, carrinho, restart e `session_mismatch`;
+- offline com/sem cache, reconexão, resume e SignalR perdido/duplicado/fora de ordem;
+- schema 1, versão futura e campos compatíveis desconhecidos;
+- hash semântico determinístico e insensível a metadados técnicos;
+- cache de mídia com checksum, falha, LRU, espaço crítico e SeaweedFS real;
+- produtos, variantes, ingredientes, pizzas, Monte sua Pizza, combos e estimativa decimal;
+- ausência de Order, simulação autoritativa, reserva ou fila offline.
+
 ## E2E
 Cenário ouro:
 abrir sessão -> pedido -> aceitar -> preparar -> entregar -> fechar -> pagar -> liberar.
@@ -54,3 +66,19 @@ Cenários de falha:
 - dois tablets abrindo sessão;
 - dois pagamentos concorrentes;
 - device revogado.
+
+### Matriz obrigatória da Fase 4
+
+- PostgreSQL/Testcontainers real para pricing, snapshots, idempotência, Outbox/Inbox e intake;
+- concorrência coordenada sem `Task.Delay`: replay, payload divergente, clientSubmission duplicado,
+  dois devices, Closing, revoke/block, publicação/disponibilidade concorrentes e aceite duplo;
+- resposta perdida e timeout após commit reconciliados sem outro pedido;
+- Outbox multi-consumer: sucesso, falha parcial, retry, concluído ignorado, evento duplicado e restart;
+- snapshot permanece idêntico depois de arquivar/republicar o catálogo;
+- pricing autoritativo para simples, configurável, pizza, multissabor, Monte sua Pizza e combos
+  `fixed_price`/`calculated`, sem Promotions;
+- cross-tenant para simulação, submissão, reconciliação, station, fila, detalhe e aceite;
+- SQLite/MAUI para review, envio, `submission_unknown`, restart e reconciliação;
+- Vue para FIFO, filtro por estação, detalhe, realtime/fallback e aceite;
+- auditoria negativa de cancelamento, rejeição, preparo, pausa, Ready, entrega, Payments e
+  Promotions.
