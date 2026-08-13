@@ -1779,13 +1779,11 @@ version bigint not null
 
 ---
 
-## 10.3 `ordering.order_item_snapshot`
+## 10.3 snapshot histórico em `ordering.order_item.snapshot`
 
-```text
-order_item_id uuid PK/FK
-snapshot jsonb not null
-created_at timestamptz not null
-```
+Não existe tabela separada `ordering.order_item_snapshot`. A definição conceitual anterior foi
+substituída pelo campo `snapshot jsonb not null` de `ordering.order_item`, junto de
+`snapshot_schema_version`. O JSONB é imutável e alterações futuras do catálogo nunca o modificam.
 
 ### Deve preservar
 
@@ -1822,26 +1820,29 @@ display_order integer not null
 
 ---
 
-## 10.5 `ordering.order_item_ingredient_change`
+## 10.5 `ordering.order_item_ingredient`
 
 ```text
 id uuid PK
 order_item_id uuid FK not null
 ingredient_id uuid nullable
 ingredient_name_snapshot varchar(160) not null
-change_type varchar(20) not null
-quantity numeric(12,3) nullable
-scope_type varchar(40) not null
-pizza_fraction_id uuid nullable
+action varchar(20) not null
+quantity numeric(12,3) not null
 additional_amount numeric(14,2) not null
 ```
 
-### `change_type`
+### `action`
 
 ```text
 removed
 added
 ```
+
+Não existe tabela separada `ordering.order_item_ingredient_change`. A composição e as alterações
+estruturadas ficam em `ordering.order_item_ingredient`. Essa representação atende consultas e intake;
+o JSONB de `ordering.order_item.snapshot` preserva o contexto histórico integral. As duas formas são
+complementares e nenhuma delas é reconstruída a partir do catálogo atual.
 
 ---
 
@@ -2854,6 +2855,75 @@ Mesma chave + request diferente:
 
 ---
 
+## 18.4 Correção de idempotência da Fase 4
+
+`integration.idempotency_record` passa a possuir `id uuid` como PK. A identidade lógica tenant-aware
+é `unique(establishment_id, operation_type, idempotency_key)` quando `establishment_id is not null`;
+operações globais usam unique parcial equivalente quando nulo. A PK antiga
+`(idempotency_key, operation_type)` deve ser removida, pois impedia a mesma chave em tenants distintos.
+
+# 18A. Modelo implementável de Ordering e Kitchen na Fase 4
+
+Esta seção prevalece sobre campos conceituais incompatíveis das seções 10 e 11.
+
+## `ordering.cart_simulation`
+
+```text
+id uuid PK
+establishment_id uuid FK not null
+source_device_id uuid FK not null
+table_session_id uuid FK not null
+local_cart_id uuid not null
+catalog_revision_id uuid not null
+catalog_version bigint not null
+availability_version bigint not null
+request_hash varchar(128) not null
+simulation_version varchar(128) not null
+requires_review boolean not null
+can_submit boolean not null
+intent_snapshot jsonb not null
+result_snapshot jsonb not null
+valid_until timestamptz not null
+created_at timestamptz not null
+```
+
+Índices por `(establishment_id, table_session_id, valid_until)` e
+`(establishment_id, source_device_id, local_cart_id, created_at desc)`. Não há reserva.
+
+`establishments.establishment_setting` recebe `ordering.simulation_validity_seconds`, inteiro positivo,
+default de Development e fallback inicial 300.
+
+## Pedido
+
+`ordering.customer_order` usa UUID como PK, `order_number bigint` alimentado pela sequence global
+`ordering.order_number_seq`, `establishment_id`, `table_session_id`, `source_device_id`,
+`client_submission_id`, status `submitted`, subtotal, desconto zero, total, timestamps e version.
+Uniques: `order_number`; e `(establishment_id, source_device_id, client_submission_id)`.
+
+`ordering.order_item` pertence ao pedido, referencia IDs publicados apenas para rastreabilidade e
+persiste nome, quantidade, valores autoritativos, `configuration_version varchar`, status comercial e
+snapshot completo. Status definidos: `submitted`, `partially_cancelled`, `cancelled`, `completed`; a
+Fase 4 somente cria `submitted`.
+
+As tabelas estruturadas implementadas são `order_item_ingredient`, `order_item_option`,
+`order_item_note`, `order_item_pizza_configuration`, `order_item_pizza_fraction` e
+`order_item_combo_selection`. Elas servem a consultas/intake, mas o JSONB imutável continua sendo o
+registro histórico integral. Uniques impedem posições/seleções duplicadas dentro do mesmo item.
+
+O snapshot usa `snapshotSchemaVersion = 1` e inclui produto/variante, nomes, quantidade, preços,
+ingredientes incluídos/removidos/adicionados, grupos/opções, pizza, sabores e frações iguais,
+partes montadas do zero, massa, borda, combo e seleções, observações, política de cálculo,
+CatalogRevision, catalogVersion, availabilityVersion e configurationVersion.
+
+## Intake Kitchen
+
+`kitchen.station` adiciona `is_default boolean not null`; há unique parcial de uma default ativa por
+estabelecimento. `kitchen.production_item.station_id` é obrigatório no recorte implementado, possui
+unique em `order_item_id`, queue position FIFO monotônica e status inicial `awaiting_acceptance`.
+`kitchen.production_status_history` registra `awaiting_acceptance -> accepted` e
+`accepted -> awaiting_preparation` na mesma operação de aceite. Tabelas de attempt, pause, delivery e
+contest permanecem conceituais e não entram nas migrations da Fase 4.
+
 # 19. Schema `reporting`
 
 Essas tabelas são projeções e não fonte de verdade.
@@ -3057,7 +3127,7 @@ tables.dining_table
 └── tables.table_session
     ├── ordering.customer_order
     │   └── ordering.order_item
-    │       ├── ordering.order_item_snapshot
+    │       ├── ordering.order_item.snapshot (JSONB imutável)
     │       ├── ordering.pizza_configuration
     │       └── kitchen.production_item
     ├── payments.payment

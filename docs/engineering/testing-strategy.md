@@ -66,3 +66,19 @@ Cenários de falha:
 - dois tablets abrindo sessão;
 - dois pagamentos concorrentes;
 - device revogado.
+
+### Matriz obrigatória da Fase 4
+
+- PostgreSQL/Testcontainers real para pricing, snapshots, idempotência, Outbox/Inbox e intake;
+- concorrência coordenada sem `Task.Delay`: replay, payload divergente, clientSubmission duplicado,
+  dois devices, Closing, revoke/block, publicação/disponibilidade concorrentes e aceite duplo;
+- resposta perdida e timeout após commit reconciliados sem outro pedido;
+- Outbox multi-consumer: sucesso, falha parcial, retry, concluído ignorado, evento duplicado e restart;
+- snapshot permanece idêntico depois de arquivar/republicar o catálogo;
+- pricing autoritativo para simples, configurável, pizza, multissabor, Monte sua Pizza e combos
+  `fixed_price`/`calculated`, sem Promotions;
+- cross-tenant para simulação, submissão, reconciliação, station, fila, detalhe e aceite;
+- SQLite/MAUI para review, envio, `submission_unknown`, restart e reconciliação;
+- Vue para FIFO, filtro por estação, detalhe, realtime/fallback e aceite;
+- auditoria negativa de cancelamento, rejeição, preparo, pausa, Ready, entrega, Payments e
+  Promotions.

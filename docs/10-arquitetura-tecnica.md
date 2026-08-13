@@ -61,3 +61,18 @@ revalidação periódica detectam mensagens perdidas.
   isolamento `ReadCommitted`; índices únicos parciais permanecem como defesa final de consistência.
 - Substituição de dispositivo encerra o vínculo anterior, incrementa `credential_version`, revoga as
   sessões antigas e persiste `DeviceReplaced` pela Outbox na mesma transação.
+
+## Ordering, Kitchen e Outbox multi-consumer da Fase 4
+
+Ordering é autoridade da simulação, do preço final, do pedido e do snapshot histórico. Catalog
+fornece a revisão publicada e a disponibilidade; Tables fornece a sessão e recebe seus totais na mesma
+transação de submissão. Kitchen não participa dessa transação: consome `OrderSubmitted` depois do
+commit e cria o intake operacional. Um `201 Created` significa pedido persistido e pode retornar
+`pendingKitchenIntake`; SignalR nunca confirma persistência nem intake.
+
+A Outbox possui registro único do evento, mas seu processamento é por consumidor registrado. Cada
+consumidor grava sua conclusão em `integration.inbox_message(event_id, consumer_name)`. O dispatcher
+ignora consumidores concluídos, reexecuta somente pendentes/falhos e preenche `outbox_message.processed_at`
+apenas quando todos os consumidores registrados para o tipo concluíram. Assim, SignalR não pode
+finalizar `OrderSubmitted` antes de Kitchen. Reinício entre efeito e finalização preserva idempotência;
+notificações podem ser repetidas e os clientes reconciliam pela API.

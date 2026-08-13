@@ -56,6 +56,19 @@ public sealed class Phase3LocalStateTests : IAsyncLifetime
         await _database.InstallCatalogAsync(_context, Guid.NewGuid(), 1, 0, 1, "a", MenuJson(1, 1, 0), DateTime.UtcNow); var otherTenant = _context with { EstablishmentId = Guid.NewGuid() }; var otherDevice = _context with { DeviceId = Guid.NewGuid() }; Assert.Null(await _database.GetActiveCatalogAsync(otherTenant)); Assert.Null(await _database.GetActiveCatalogAsync(otherDevice)); await _database.InvalidateContextAsync(_context); Assert.Null(await _database.GetActiveCatalogAsync(_context));
     }
 
+    [Fact]
+    public async Task DuplicateLostAndOutOfOrderInvalidationsReconcileWithoutStateRegression()
+    {
+        await _database.InstallCatalogAsync(_context, Guid.NewGuid(), 2, 3, 1, "new", MenuJson(1, 2, 3), DateTime.UtcNow);
+        await _database.InstallAvailabilityAsync(_context, 2, 3, 1, "new-a", """{"schemaVersion":1,"catalogVersion":2,"availabilityVersion":3,"ingredients":[],"products":[],"variants":[]}""", DateTime.UtcNow);
+        await _database.InstallCatalogAsync(_context, Guid.NewGuid(), 1, 9, 1, "old", MenuJson(1, 1, 9), DateTime.UtcNow.AddSeconds(1));
+        await _database.InstallAvailabilityAsync(_context, 2, 2, 1, "old-a", """{"schemaVersion":1,"catalogVersion":2,"availabilityVersion":2,"ingredients":[],"products":[],"variants":[]}""", DateTime.UtcNow.AddSeconds(1));
+        Assert.Equal(2, (await _database.GetActiveCatalogAsync(_context))!.CatalogVersion); Assert.Equal(3, (await _database.GetAvailabilityAsync(_context))!.AvailabilityVersion);
+        var api = new FakeApi { Menu = Menu(HttpStatusCode.NotModified, null, "new"), Availability = Menu(HttpStatusCode.NotModified, null, "new-a") }; using var coordinator = new ReconciliationCoordinator(new MenuSynchronizationService(_database, api, () => true, () => DateTime.UtcNow));
+        await Task.WhenAll(coordinator.ReconcileAsync(_context, ReconciliationTrigger.SignalRInvalidation, default), coordinator.ReconcileAsync(_context, ReconciliationTrigger.SignalRInvalidation, default), coordinator.ReconcileAsync(_context, ReconciliationTrigger.SignalRReconnected, default));
+        Assert.Equal(2, (await _database.GetActiveCatalogAsync(_context))!.CatalogVersion); Assert.True(api.MenuCalls >= 3); Assert.True(api.AvailabilityCalls >= 3);
+    }
+
     [Theory]
     [InlineData("10.005", "10.01")]
     [InlineData("10.004", "10.00")]

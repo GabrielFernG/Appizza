@@ -4,7 +4,7 @@ namespace Appizza.Table.Core;
 
 public static class LocalContract
 {
-    public const int DatabaseVersion = 1;
+    public const int DatabaseVersion = 2;
     public const int MenuSchemaVersion = 1;
     public const long DefaultMediaCacheBytes = 512L * 1024 * 1024;
     public const int OldCartRetentionDays = 7;
@@ -52,6 +52,14 @@ public sealed class LocalCartRow
     public long CatalogVersion { get; set; }
     public long AvailabilityVersion { get; set; }
     public string Status { get; set; } = "active";
+    public string? SimulationId { get; set; }
+    public string? SimulationVersion { get; set; }
+    public DateTime? SimulationValidUntilUtc { get; set; }
+    public bool RequiresReview { get; set; }
+    public string? ClientSubmissionId { get; set; }
+    public string? IdempotencyKey { get; set; }
+    public string? AuthoritativeResultJson { get; set; }
+    public string? SubmittedOrderId { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
 }
@@ -107,3 +115,4 @@ public sealed class SyncStateRow
 public sealed record CachedCatalog(string PayloadJson, string ETag, long CatalogVersion, long AvailabilityVersion, int SchemaVersion);
 public sealed record CachedAvailability(string PayloadJson, string ETag, long CatalogVersion, long AvailabilityVersion, int SchemaVersion);
 public sealed record CartItemInput(Guid Id, Guid ProductId, Guid? ProductVariantId, string ProductType, decimal Quantity, string ConfigurationJson, string ConfigurationVersion, long CatalogVersion, long AvailabilityVersion, decimal EstimatedUnitAmount, string ValidationState = "valid_estimate");
+public sealed record LocalSubmissionState(Guid CartId, string Status, Guid? SimulationId, string? SimulationVersion, DateTime? ValidUntilUtc, bool RequiresReview, Guid? ClientSubmissionId, Guid? IdempotencyKey, string? ResultJson, Guid? OrderId);

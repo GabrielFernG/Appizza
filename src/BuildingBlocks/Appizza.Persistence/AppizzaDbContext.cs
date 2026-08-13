@@ -5,6 +5,8 @@ using Appizza.Modules.Identity;
 using Appizza.Modules.Tables;
 using Appizza.Modules.Catalog;
 using Appizza.Modules.Media;
+using Appizza.Modules.Ordering;
+using Appizza.Modules.Kitchen;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using System.Text.RegularExpressions;
@@ -31,7 +33,11 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DiningTableConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CategoryConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MediaAssetConfiguration).Assembly);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(CartSimulationConfiguration).Assembly);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(StationConfiguration).Assembly);
         modelBuilder.HasSequence<long>("table_session_number_seq", "tables");
+        modelBuilder.HasSequence<long>("order_number_seq", "ordering");
+        modelBuilder.HasSequence<long>("production_queue_position_seq", "kitchen");
         ConfigureRelationships(modelBuilder);
         ApplySnakeCaseNames(modelBuilder);
     }
@@ -122,6 +128,24 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
         modelBuilder.Entity<Product>().HasOne<MediaAsset>().WithMany().HasForeignKey(x => x.PrimaryImageMediaId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductVariant>().HasOne<MediaAsset>().WithMany().HasForeignKey(x => x.ImageMediaId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Ingredient>().HasOne<MediaAsset>().WithMany().HasForeignKey(x => x.ImageMediaId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<CartSimulation>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<CartSimulation>().HasOne<Device>().WithMany().HasForeignKey(x => x.SourceDeviceId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<CartSimulation>().HasOne<TableSession>().WithMany().HasForeignKey(x => x.TableSessionId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Order>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Order>().HasOne<TableSession>().WithMany().HasForeignKey(x => x.TableSessionId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Order>().HasOne<Device>().WithMany().HasForeignKey(x => x.SourceDeviceId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItem>().HasOne<Order>().WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemIngredient>().HasOne<OrderItem>().WithMany().HasForeignKey(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemOption>().HasOne<OrderItem>().WithMany().HasForeignKey(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemNote>().HasOne<OrderItem>().WithMany().HasForeignKey(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemPizzaConfiguration>().HasOne<OrderItem>().WithOne().HasForeignKey<OrderItemPizzaConfiguration>(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemPizzaFraction>().HasOne<OrderItem>().WithMany().HasForeignKey(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemComboSelection>().HasOne<OrderItem>().WithMany().HasForeignKey(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Station>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionItem>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionItem>().HasOne<Station>().WithMany().HasForeignKey(x => x.StationId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionItem>().HasOne<OrderItem>().WithOne().HasForeignKey<ProductionItem>(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionStatusHistory>().HasOne<ProductionItem>().WithMany().HasForeignKey(x => x.ProductionItemId).OnDelete(DeleteBehavior.Restrict);
     }
 
     private static void ApplySnakeCaseNames(ModelBuilder modelBuilder)

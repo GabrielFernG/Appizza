@@ -29,3 +29,5 @@ ADRs de Fundação:
 - `adr/ADR-017-lifecycle-e-upload-de-media.md`
 - `adr/ADR-018-menu-publicado-cache-e-versoes.md`
 - `adr/ADR-019-carrinho-local-e-fronteira-de-confianca.md`
+- `adr/ADR-020-ordering-simulacao-submissao-e-snapshots.md`
+- `adr/ADR-021-outbox-multi-consumer-e-intake-kitchen.md`

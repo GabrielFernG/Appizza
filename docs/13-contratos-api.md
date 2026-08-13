@@ -507,7 +507,7 @@ reserva ou envio: o carrinho é local e valores são estimativas não autoritati
 
 Auth: device.
 
-Não altera estado de negócio.
+Não altera estado comercial, mas persiste a simulação temporária para review e submissão.
 
 Request:
 
@@ -515,7 +515,7 @@ Request:
 {
   "sessionId": "uuid",
   "localCartId": "uuid",
-  "menuVersion": 42,
+  "catalogVersion": 42,
   "availabilityVersion": 19,
   "items": [
     {
@@ -524,7 +524,7 @@ Request:
       "productVariantId": null,
       "productType": "pizza",
       "quantity": 1,
-      "configurationVersion": 12,
+      "configurationVersion": "sha256-v1:hex",
       "configuration": {}
     }
   ]
@@ -546,13 +546,15 @@ Response:
 ```json
 {
   "simulationId": "uuid",
+  "simulationVersion": "sha256-v1:hex",
   "validUntil": "2026-08-09T15:10:00Z",
+  "catalogVersion": 42,
+  "availabilityVersion": 19,
   "items": [],
-  "promotions": [],
   "totals": {
     "subtotalAmount": 131.00,
-    "promotionDiscountAmount": 5.00,
-    "totalAmount": 126.00
+    "discountAmount": 0.00,
+    "totalAmount": 131.00
   },
   "warnings": [],
   "requiresReview": false,
@@ -560,8 +562,10 @@ Response:
 }
 ```
 
-Possíveis `requiredActions`:
-SELECT_PROMOTION_BENEFIT.
+`estimatedUnitAmount`, quando enviado, serve somente para comparação de UX. `requiresReview` é
+verdadeiro somente por diferença material de intenção, configuração, disponibilidade ou preço;
+mudança isolada de contador apenas atualiza as versões retornadas. A validade inicial é 300 segundos
+configuráveis, sem reserva, e nunca dispensa revalidação final.
 
 ---
 
@@ -572,7 +576,21 @@ SELECT_PROMOTION_BENEFIT.
 Auth: device.  
 Idempotency-Key: obrigatório.
 
-Request contém itens completos, versions e `simulationId`.
+Request:
+
+```json
+{
+  "sessionId": "uuid",
+  "localCartId": "uuid",
+  "clientSubmissionId": "uuid",
+  "simulationId": "uuid",
+  "simulationVersion": "sha256-v1:hex",
+  "acceptedReview": true
+}
+```
+
+A intenção completa está vinculada ao snapshot persistido da simulação; nenhuma quantia enviada
+pelo cliente é entrada do cálculo autoritativo.
 
 Validação definitiva.
 Não confiar em preço enviado pelo cliente.
@@ -582,10 +600,9 @@ Transação:
 2. OrderItems;
 3. configurações;
 4. snapshots;
-5. PromotionApplication;
-6. atualização/projeção da sessão conforme arquitetura;
-7. Outbox OrderSubmitted;
-8. commit.
+5. atualização dos totais da sessão;
+6. Outbox OrderSubmitted;
+7. idempotência e commit.
 
 Response 201:
 
@@ -596,7 +613,8 @@ Response 201:
     "number": 154,
     "status": "submitted",
     "submittedAt": "2026-08-09T15:12:00Z",
-    "totalAmount": 126.00
+    "totalAmount": 131.00,
+    "kitchenIntakeStatus": "pendingKitchenIntake"
   },
   "session": {
     "id": "uuid",
@@ -614,13 +632,83 @@ Erros:
 - PRODUCT_NOT_AVAILABLE
 - PRODUCT_CONFIGURATION_CHANGED
 - ORDER_REQUIRES_REVIEW
-- PROMOTION_NO_LONGER_ELIGIBLE
 - IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST
-- INSUFFICIENT_STOCK
+- CLIENT_SUBMISSION_ALREADY_USED
+- SIMULATION_NOT_FOUND
+- SIMULATION_EXPIRED
+- SIMULATION_VERSION_MISMATCH
+- REVIEW_CONFIRMATION_REQUIRED
+- NO_ACTIVE_PRODUCTION_STATION
 
 ## GET `/api/v1/table-device/orders/submissions/{idempotencyKey}`
 
 Reconcilia resposta perdida.
+
+O escopo da busca é sempre o tenant e o device autenticados. Responde o mesmo envelope persistido da
+submissão ou 404 `ORDER_SUBMISSION_NOT_FOUND`, sem revelar chaves de outro tenant.
+
+### Intenção canônica de item (schema 1)
+
+Cada item de `/cart/simulate` possui `localCartItemId`, `productId`, `productVariantId` opcional,
+`quantity`, `configurationVersion` string e `estimatedUnitAmount` opcional. `configuration` pode
+conter somente os blocos aplicáveis:
+
+```json
+{
+  "selectedOptions": [{ "optionId": "uuid", "quantity": 1 }],
+  "ingredients": [{ "ingredientId": "uuid", "action": "remove|add", "quantity": 1 }],
+  "pizza": {
+    "sizeId": "uuid",
+    "doughId": "uuid",
+    "crustId": "uuid",
+    "fractions": [
+      { "position": 1, "flavorId": "uuid" },
+      { "position": 2, "custom": { "ingredients": [{ "ingredientId": "uuid", "quantity": 1 }] } }
+    ]
+  },
+  "combo": {
+    "groups": [{
+      "groupId": "uuid",
+      "selections": [{ "comboGroupItemId": "uuid", "quantity": 1, "configuration": {} }]
+    }]
+  },
+  "notes": ["texto"]
+}
+```
+
+IDs precisam pertencer à revisão publicada e ao mesmo tenant. Ingredientes required não podem ser
+removidos; limites, opções, pizza, massas/bordas, frações iguais e combo não recursivo são revalidados.
+Campos monetários dentro de `configuration` são rejeitados.
+
+## GET `/api/v1/operations/kitchen/stations`
+
+Auth: funcionário com `kitchen.queue.view`. Lista somente estações ativas do tenant.
+
+## GET `/api/v1/operations/kitchen/production-items?stationId={uuid}`
+
+Auth: `kitchen.queue.view`. Retorna fila `awaiting_acceptance`/`awaiting_preparation` ordenada por
+`queuePosition`, com fallback de polling; 404 é usado para station cross-tenant.
+
+## GET `/api/v1/operations/kitchen/production-items/{productionItemId}`
+
+Auth: `kitchen.production.view`. Retorna snapshot operacional do item, mesa, pedido e histórico
+permitido, sem consultar o catálogo atual.
+
+## POST `/api/v1/operations/kitchen/production-items/{productionItemId}/accept`
+
+Auth: `kitchen.production.accept`. `Idempotency-Key` obrigatório. Aceita apenas
+`awaiting_acceptance`, registra as transições `accepted` e `awaiting_preparation` e emite
+`ProductionItemAccepted`. Replay idêntico retorna o resultado anterior; aceitação concorrente gera
+um único efeito. Erros: `PRODUCTION_ITEM_NOT_FOUND`, `PRODUCTION_ITEM_ALREADY_ACCEPTED`,
+`PRODUCTION_ITEM_INVALID_STATE` e `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST`.
+
+A idempotência é por requisição identificada pela `Idempotency-Key`, não por recurso. Se duas
+chaves distintas concorrerem, somente a vencedora retorna sucesso. A perdedora registra e retorna
+`409 PRODUCTION_ITEM_ALREADY_ACCEPTED`; replays posteriores dessa chave reproduzem o mesmo conflito,
+sem criar nova transição, histórico ou `ProductionItemAccepted`.
+
+SignalR publica payloads mínimos `KitchenQueueChanged` e `OrderSubmissionChanged`; eles são apenas
+invalidação. A UI sempre reconcilia pelos GETs.
 
 ---
 

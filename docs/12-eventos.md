@@ -198,7 +198,8 @@ Produtor: Ordering
 Outbox: obrigatório.
 
 Quando:
-pedido e itens persistidos, promoções aplicadas, snapshot criado e transação confirmada.
+pedido, itens, configurações, snapshot, totais da sessão e idempotência foram persistidos na mesma
+transação. Promotions não participa na Fase 4.
 
 Payload:
 
@@ -209,18 +210,19 @@ Payload:
   "orderNumber": 154,
   "submittedAtUtc": "2026-08-09T15:10:00Z",
   "subtotalAmount": 131.00,
-  "discountAmount": 5.00,
-  "totalAmount": 126.00,
+  "discountAmount": 0.00,
+  "totalAmount": 131.00,
   "itemCount": 3,
   "sourceDeviceId": "uuid"
 }
 ```
 
-Consumidores:
-- Kitchen -> cria ProductionItems;
-- Tables -> atualiza projeção/conta;
-- Reporting;
-- Notifications.
+Consumidores registrados na Fase 4:
+- `kitchen-intake-v1` -> cria exatamente um ProductionItem por OrderItem;
+- `ordering-signalr-v1` -> notifica a mesa sobre mudança reconciliável.
+
+Tables já foi atualizado na transação do pedido. Reporting e Notifications somente se tornam
+consumidores quando suas fases forem implementadas.
 
 Não transportar configuração completa da pizza por evento; consumidores usam contratos/projeções apropriados.
 
@@ -339,8 +341,24 @@ Outbox: sim.
 Payload:
 `productionItemId`, `orderItemId`, `stationId`, `queuePosition`, `estimatedPreparationMinutes`.
 
+Consumidor da Fase 4: `kitchen-signalr-v1`, que invalida a fila. O efeito Kitchen e a conclusão de
+Inbox são atômicos. Duplicatas não criam outro item.
+
 ## ProductionItemAccepted
 Outbox: sim.
+
+Na Fase 4 registra a passagem por `accepted` e o estado operacional resultante
+`awaiting_preparation`. Consumidor: `kitchen-signalr-v1`.
+
+## Semântica multi-consumer da Fase 4
+
+Cada tipo possui um conjunto versionado de nomes de consumidores. A conclusão de cada consumidor é
+registrada em Inbox. `outbox_message.processed_at` somente é preenchido quando todos os nomes
+registrados concluíram. Falha parcial, retry, duplicata e restart executam apenas consumidores sem
+Inbox concluída. A entrega SignalR não é exactly-once e nunca substitui GET de reconciliação.
+
+Os eventos de rejeição, preparo, pausa, Ready, entrega e cancelamento descritos abaixo continuam como
+modelo futuro e não são produzidos por implementação da Fase 4.
 
 ## ProductionItemRejected
 Outbox: obrigatório.

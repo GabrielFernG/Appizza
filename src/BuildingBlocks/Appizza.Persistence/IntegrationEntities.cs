@@ -2,7 +2,7 @@ namespace Appizza.Persistence;
 
 public sealed class OutboxMessage
 {
-    public Guid Id { get; set; }
+    public Guid Id { get; set; } = Guid.NewGuid();
     public Guid? EstablishmentId { get; set; }
     public required string EventType { get; set; }
     public int SchemaVersion { get; set; }
@@ -27,6 +27,7 @@ public sealed class InboxMessage
 
 public sealed class IdempotencyRecord
 {
+    public Guid Id { get; set; }
     public required string IdempotencyKey { get; set; }
     public Guid? EstablishmentId { get; set; }
     public required string OperationType { get; set; }

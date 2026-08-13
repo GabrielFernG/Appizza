@@ -22,6 +22,17 @@ O carrinho pertence à sessão atual e persiste IDs, configuração e versões u
 anterior permanece `session_mismatch`, nunca se torna ativo automaticamente e é retido localmente por
 sete dias. Valores locais são apenas estimativas; simulação e envio autoritativos começam na Fase 4.
 
+## Simulação e envio da Fase 4
+
+Ao avançar, o tablet envia a intenção para simulação autoritativa. Se preço, configuração ou
+disponibilidade materialmente divergirem, preserva as escolhas, destaca os itens e exige review da
+versão exata. O envio usa simulação válida, `clientSubmissionId` e `Idempotency-Key`.
+
+`201 Created` confirma o pedido, ainda que o intake de Kitchen esteja pendente. Em timeout/resposta
+perdida, o carrinho entra em `submission_unknown` e reconcilia pela chave; nunca cria nova submissão
+automaticamente. Depois da confirmação, o carrinho local somente é marcado como submetido pela
+resposta/reconciliação da API, não por SignalR.
+
 ## Pedido
 Simulação server-side -> revisão -> submissão idempotente -> snapshot -> produção.
 

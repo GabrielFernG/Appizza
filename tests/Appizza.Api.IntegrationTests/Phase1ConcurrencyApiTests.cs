@@ -14,7 +14,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Testcontainers.PostgreSql;
 
 namespace Appizza.Api.IntegrationTests;
@@ -267,6 +269,12 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
         _client = _factory.CreateClient();
     }
 
+    public async Task<string> CreateUserTokenAsync(Guid establishmentId, params string[] permissionCodes)
+    {
+        await using var db = CreateDbContext(); var establishment = await db.Set<Establishment>().SingleAsync(x => x.Id == establishmentId); var now = DateTimeOffset.UtcNow; var login = $"u{Guid.NewGuid():N}"; var user = new User { Id = Guid.NewGuid(), EstablishmentId = establishmentId, Name = login, Login = login, CreatedAt = now, UpdatedAt = now }; user.PasswordHash = new PasswordHasher<User>().HashPassword(user, Password); db.Add(user); await db.SaveChangesAsync();
+        foreach (var code in permissionCodes) { var permission = await db.Set<Permission>().SingleAsync(x => x.Code == code); db.Add(new UserPermission { Id = Guid.NewGuid(), UserId = user.Id, PermissionId = permission.Id, Effect = "allow", CreatedAt = now }); } await db.SaveChangesAsync(); var signIn = await PostAsync("api/v1/auth/sign-in", new { establishmentCode = establishment.PublicCode, login, password = Password }); signIn.EnsureSuccessStatusCode(); using var json = JsonDocument.Parse(await signIn.Content.ReadAsStringAsync()); return json.RootElement.GetProperty("accessToken").GetString()!;
+    }
+
     public async Task DisposeAsync()
     {
         _client?.Dispose();
@@ -276,6 +284,14 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
 
     public AppizzaDbContext CreateDbContext() => new(new DbContextOptionsBuilder<AppizzaDbContext>()
         .UseNpgsql(ConnectionString, options => options.MigrationsHistoryTable("__ef_migrations_history", "integration")).Options);
+
+    public TestPhase4NotificationPublisher Notifications => _factory!.Services.GetRequiredService<TestPhase4NotificationPublisher>();
+    public TestPhase4OrderingHook OrderingHook => _factory!.Services.GetRequiredService<TestPhase4OrderingHook>();
+    public Task DispatchPhase4Async()
+    {
+        var dispatcher = new Phase4OutboxDispatcher(_factory!.Services.GetRequiredService<IServiceScopeFactory>(), Notifications, _factory.Services.GetRequiredService<ILogger<Phase4OutboxDispatcher>>());
+        return dispatcher.DispatchOnceAsync(CancellationToken.None);
+    }
 
     public async Task<TenantContext> CreateTenantAsync(int deviceLimit, int tableCount)
     {
@@ -289,7 +305,7 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
         var tables = Enumerable.Range(1, tableCount).Select(index => new DiningTable { Id = Guid.NewGuid(), EstablishmentId = establishment.Id, Name = $"Mesa {index}", InternalCode = $"M{index}", CreatedAt = now, UpdatedAt = now }).ToArray();
         db.AddRange(tables);
         var permissions = new List<Permission>();
-        foreach (var code in Phase1Permissions.All.Concat(Phase2Permissions.All))
+        foreach (var code in Phase1Permissions.All.Concat(Phase2Permissions.All).Concat(Appizza.Modules.Kitchen.Phase4KitchenPermissions.All))
         {
             var permission = await db.Set<Permission>().SingleOrDefaultAsync(x => x.Code == code) ?? new Permission { Id = Guid.NewGuid(), Code = code, Module = code.Split('.')[0], Name = code };
             if (db.Entry(permission).State == EntityState.Detached) db.Add(permission);
@@ -373,6 +389,8 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
         return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
     }
     public Task<HttpResponseMessage> PostAsync(string path, object? body, string? token = null, bool idempotent = false) => SendAsync(HttpMethod.Post, path, body, token, idempotent);
+    public async Task<HttpResponseMessage> PostWithIdempotencyAsync(string path, object? body, string token, Guid key)
+    { using var request = new HttpRequestMessage(HttpMethod.Post, path); if (body is not null) request.Content = JsonContent.Create(body); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token); request.Headers.Add("Idempotency-Key", key.ToString()); return await _client!.SendAsync(request); }
     public Task<HttpResponseMessage> PutAsync(string path, object? body, string token) => SendAsync(HttpMethod.Put, path, body, token, false);
     public async Task<HttpResponseMessage> PutContentAsync(string path, byte[] content, string contentType, string token)
     { using var request = new HttpRequestMessage(HttpMethod.Put, path) { Content = new ByteArrayContent(content) }; request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token); request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString()); return await _client!.SendAsync(request); }
@@ -416,6 +434,13 @@ internal sealed class Phase1TestFactory(string connectionString) : WebApplicatio
         var objectStorageSecretKey = Environment.GetEnvironmentVariable("APPIZZA_TEST_OBJECT_STORAGE_SECRET_KEY") ?? "test";
         builder.UseEnvironment("Testing");
         builder.ConfigureLogging(logging => logging.ClearProviders());
+        builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<IPhase4NotificationPublisher>();
+            services.AddSingleton<TestPhase4NotificationPublisher>();
+                services.AddSingleton<IPhase4NotificationPublisher>(provider => provider.GetRequiredService<TestPhase4NotificationPublisher>());
+                services.RemoveAll<IPhase4OrderingHook>(); services.AddSingleton<TestPhase4OrderingHook>(); services.AddSingleton<IPhase4OrderingHook>(provider => provider.GetRequiredService<TestPhase4OrderingHook>());
+        });
         builder.UseSetting("ConnectionStrings:Appizza", connectionString);
         builder.UseSetting("ObjectStorage:Endpoint", objectStorageEndpoint);
         builder.UseSetting("ObjectStorage:Bucket", objectStorageBucket);
@@ -440,4 +465,26 @@ internal sealed class Phase1TestFactory(string connectionString) : WebApplicatio
             ["AuthenticationRateLimit:PermitLimit"] = "1000"
         }));
     }
+}
+
+public sealed class TestPhase4NotificationPublisher : IPhase4NotificationPublisher
+{
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, int> _deliveries = new();
+    public bool Fail { get; set; }
+    public int Count(Guid eventId) => _deliveries.TryGetValue(eventId, out var count) ? count : 0;
+    public Task PublishAsync(Guid tenant, Guid eventId, string eventType, CancellationToken cancellationToken)
+    {
+        if (Fail) throw new InvalidOperationException("controlled-notification-failure");
+        _deliveries.AddOrUpdate(eventId, 1, static (_, count) => count + 1);
+        return Task.CompletedTask;
+    }
+
+    public void Reset() { Fail = false; _deliveries.Clear(); }
+}
+
+public sealed class TestPhase4OrderingHook : IPhase4OrderingHook
+{
+    private readonly object _sync = new(); private string? _stage; private TaskCompletionSource? _reached; private TaskCompletionSource? _release;
+    public (Task Reached, Action Release) Pause(string stage) { lock (_sync) { _stage = stage; _reached = new(TaskCreationOptions.RunContinuationsAsynchronously); _release = new(TaskCreationOptions.RunContinuationsAsynchronously); return (_reached.Task, () => _release.TrySetResult()); } }
+    public async Task ReachAsync(string stage, Guid tenant, Guid sessionId, Guid deviceId, CancellationToken cancellationToken) { Task? wait = null; lock (_sync) if (_stage == stage) { _reached!.TrySetResult(); wait = _release!.Task; _stage = null; } if (wait is not null) await wait.WaitAsync(cancellationToken); }
 }

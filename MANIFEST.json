@@ -1,6 +1,6 @@
 {
-  "version": "3.4.1",
-  "file_count": 62,
+  "version": "4.1.0",
+  "file_count": 64,
   "files": [
     "AGENTS.md",
     "DOCUMENTATION_VERSION.md",
@@ -41,6 +41,8 @@
     "docs/adr/ADR-017-lifecycle-e-upload-de-media.md",
     "docs/adr/ADR-018-menu-publicado-cache-e-versoes.md",
     "docs/adr/ADR-019-carrinho-local-e-fronteira-de-confianca.md",
+    "docs/adr/ADR-020-ordering-simulacao-submissao-e-snapshots.md",
+    "docs/adr/ADR-021-outbox-multi-consumer-e-intake-kitchen.md",
     "docs/checklists/definition-of-done.md",
     "docs/checklists/mvp-acceptance.md",
     "docs/checklists/pull-request.md",

@@ -1,8 +1,8 @@
 {
   "sessionId": "session-uuid",
   "localCartId": "cart-uuid",
+  "clientSubmissionId": "submission-uuid",
   "simulationId": "simulation-uuid",
-  "menuVersion": 42,
-  "availabilityVersion": 19,
-  "items": []
+  "simulationVersion": "sha256-v1:hex",
+  "acceptedReview": true
 }
