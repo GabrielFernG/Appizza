@@ -10,6 +10,36 @@ namespace Appizza.Api;
 #pragma warning disable CA1848
 
 public interface IPhase4NotificationPublisher { Task PublishAsync(Guid tenant, Guid eventId, string eventType, CancellationToken cancellationToken); }
+public interface IPhase5OutboxTestHook
+{
+    Task BeforeConsumerAsync(string consumerName, Guid eventId, CancellationToken cancellationToken);
+}
+public sealed class Phase5OutboxTestHook : IPhase5OutboxTestHook
+{
+    private sealed class Gate { public readonly object Sync = new(); public TaskCompletionSource<bool>? Reached; public TaskCompletionSource<bool>? Release; public int Invocations; public bool Block; public bool Fail; public Exception? Failure; }
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Gate> gates = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> eventInvocations = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Exception> eventFailures = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (TaskCompletionSource<bool> Reached, TaskCompletionSource<bool> Release)> eventBlocks = new(StringComparer.Ordinal);
+    private Gate For(string name) => gates.GetOrAdd(name, _ => new Gate());
+    public Task BeforeConsumerAsync(string consumerName, Guid eventId, CancellationToken cancellationToken)
+    {
+        var gate = For(consumerName); lock (gate.Sync) { gate.Invocations++; eventInvocations.AddOrUpdate($"{consumerName}|{eventId:N}", 1, static (_, value) => value + 1); gate.Reached?.TrySetResult(true); if (eventFailures.TryRemove($"{consumerName}|{eventId:N}", out var eventFailure)) throw eventFailure; if (eventBlocks.TryGetValue($"{consumerName}|{eventId:N}", out var eventBlock)) { eventBlock.Reached.TrySetResult(true); return eventBlock.Release.Task.WaitAsync(cancellationToken); } if (gate.Fail) { gate.Fail = false; throw gate.Failure ?? new InvalidOperationException($"Testing failure for {consumerName}"); } if (!gate.Block) return Task.CompletedTask; gate.Release ??= NewTcs(); }
+        return gate.Release.Task.WaitAsync(cancellationToken);
+    }
+    public void BlockNext(string consumerName) { var g = For(consumerName); lock (g.Sync) { g.Block = true; g.Reached = NewTcs(); g.Release = null; } }
+    public Task WaitUntilReachedAsync(string consumerName, CancellationToken ct = default) => (For(consumerName).Reached ?? NewTcs()).Task.WaitAsync(ct);
+    public void Release(string consumerName) { var g = For(consumerName); lock (g.Sync) { g.Block = false; g.Release?.TrySetResult(true); } }
+    public void FailNext(string consumerName, Exception? exception = null) { var g = For(consumerName); lock (g.Sync) { g.Fail = true; g.Failure = exception; } }
+    public void FailNext(string consumerName, Guid eventId, Exception exception) => eventFailures[$"{consumerName}|{eventId:N}"] = exception;
+    public void BlockNext(string consumerName, Guid eventId) => eventBlocks[$"{consumerName}|{eventId:N}"] = (NewTcs(), NewTcs());
+    public Task WaitUntilReachedAsync(string consumerName, Guid eventId, CancellationToken ct = default) => eventBlocks[$"{consumerName}|{eventId:N}"].Reached.Task.WaitAsync(ct);
+    public void Release(string consumerName, Guid eventId) { if (eventBlocks.TryRemove($"{consumerName}|{eventId:N}", out var block)) block.Release.TrySetResult(true); }
+    public int GetInvocationCount(string consumerName) => For(consumerName).Invocations;
+    public int GetInvocationCount(string consumerName, Guid eventId) => eventInvocations.TryGetValue($"{consumerName}|{eventId:N}", out var count) ? count : 0;
+    public void Reset() { gates.Clear(); eventInvocations.Clear(); eventFailures.Clear(); eventBlocks.Clear(); }
+    private static TaskCompletionSource<bool> NewTcs() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+}
 
 public sealed class Phase4SignalRNotificationPublisher(Microsoft.AspNetCore.SignalR.IHubContext<Phase1Hub> hub) : IPhase4NotificationPublisher
 {
@@ -17,7 +47,7 @@ public sealed class Phase4SignalRNotificationPublisher(Microsoft.AspNetCore.Sign
     { var method = eventType == "order-submitted.v1" ? "OrderSubmitted" : eventType == "production-item-accepted.v1" ? "ProductionItemAccepted" : "ProductionQueueChanged"; return hub.Clients.Group($"establishment:{tenant}").SendAsync(method, new { eventId, eventType }, cancellationToken); }
 }
 
-public sealed class Phase4OutboxDispatcher(IServiceScopeFactory scopeFactory, IPhase4NotificationPublisher notifications, ILogger<Phase4OutboxDispatcher> logger) : BackgroundService
+public sealed class Phase4OutboxDispatcher(IServiceScopeFactory scopeFactory, IPhase4NotificationPublisher notifications, ILogger<Phase4OutboxDispatcher> logger, IPhase5OutboxTestHook? testHook = null) : BackgroundService
 {
     private static readonly IReadOnlyDictionary<string, string[]> Consumers = new Dictionary<string, string[]>(StringComparer.Ordinal)
     {
@@ -71,6 +101,7 @@ public sealed class Phase4OutboxDispatcher(IServiceScopeFactory scopeFactory, IP
         await using var scope = scopeFactory.CreateAsyncScope(); var db = scope.ServiceProvider.GetRequiredService<AppizzaDbContext>(); await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({message.Id.ToString("N") + "|" + consumer}, 0))", ct);
         if (await db.InboxMessages.AnyAsync(x => x.EventId == message.Id && x.ConsumerName == consumer, ct)) { await tx.CommitAsync(ct); return; }
+        await (testHook ?? new Phase5OutboxTestHook()).BeforeConsumerAsync(consumer, message.Id, ct);
         if (consumer == "kitchen-intake-v1") await Intake(db, message, ct);
         else if (consumer == "kitchen-commercial-change-v1") await CancelProduction(db, message, ct);
         else if (consumer == "kitchen-item-change-v1") await ChangeProduction(db, message, ct);

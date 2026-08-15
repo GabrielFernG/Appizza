@@ -306,10 +306,12 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
     public TestPhase4OrderingHook OrderingHook => _factory!.Services.GetRequiredService<TestPhase4OrderingHook>();
     public TestPhase5ChangeHook ChangeHook => _factory!.Services.GetRequiredService<TestPhase5ChangeHook>();
     public TestPhase5ReviewDiagnostics ReviewDiagnostics => _factory!.Services.GetRequiredService<TestPhase5ReviewDiagnostics>();
+    public Phase5OutboxTestHook OutboxHook => _factory!.Services.GetRequiredService<Phase5OutboxTestHook>();
+    public Phase4OutboxDispatcher CreateDispatcher(IPhase5OutboxTestHook hook) => new(_factory!.Services.GetRequiredService<IServiceScopeFactory>(), Notifications, _factory.Services.GetRequiredService<ILogger<Phase4OutboxDispatcher>>(), hook);
     public TestLogSink ExceptionSink => _factory!.ExceptionSink;
     public Task DispatchPhase4Async()
     {
-        var dispatcher = new Phase4OutboxDispatcher(_factory!.Services.GetRequiredService<IServiceScopeFactory>(), Notifications, _factory.Services.GetRequiredService<ILogger<Phase4OutboxDispatcher>>());
+        var dispatcher = CreateDispatcher(OutboxHook);
         return dispatcher.DispatchOnceAsync(CancellationToken.None);
     }
 
@@ -460,6 +462,7 @@ internal sealed class Phase1TestFactory(string connectionString) : WebApplicatio
             services.RemoveAll<IPhase4NotificationPublisher>();
             services.AddSingleton<TestPhase4NotificationPublisher>();
                 services.AddSingleton<IPhase4NotificationPublisher>(provider => provider.GetRequiredService<TestPhase4NotificationPublisher>());
+                services.RemoveAll<IPhase5OutboxTestHook>(); services.AddSingleton<Phase5OutboxTestHook>(); services.AddSingleton<IPhase5OutboxTestHook>(provider => provider.GetRequiredService<Phase5OutboxTestHook>());
                 services.RemoveAll<IPhase4OrderingHook>(); services.AddSingleton<TestPhase4OrderingHook>(); services.AddSingleton<IPhase4OrderingHook>(provider => provider.GetRequiredService<TestPhase4OrderingHook>());
                 services.RemoveAll<IPhase5ChangeHook>(); services.AddSingleton<TestPhase5ChangeHook>(); services.AddSingleton<IPhase5ChangeHook>(provider => provider.GetRequiredService<TestPhase5ChangeHook>()); services.RemoveAll<IPhase5ReviewDiagnostics>(); services.AddSingleton<TestPhase5ReviewDiagnostics>(); services.AddSingleton<IPhase5ReviewDiagnostics>(provider => provider.GetRequiredService<TestPhase5ReviewDiagnostics>());
         });
