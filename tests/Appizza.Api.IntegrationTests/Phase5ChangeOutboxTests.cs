@@ -22,7 +22,7 @@ public sealed class Phase5ChangeOutboxTests(Phase1ApiFixture fixture)
             Assert.Empty(await before.InboxMessages.Where(x => x.EventId == message.Id && (x.ConsumerName == "kitchen-item-change-v1" || x.ConsumerName == "ordering-signalr-v1")).ToListAsync());
         }
 
-        await fixture.DispatchPhase4Async();
+        await Phase5OutboxDispatchTestHelper.DispatchUntilInboxAsync(fixture, change.OrderItemChangedEventId, "ordering-signalr-v1");
 
         await using (var after = fixture.CreateDbContext())
         {
@@ -64,7 +64,7 @@ public sealed class Phase5ChangeOutboxTests(Phase1ApiFixture fixture)
                 Assert.Empty(await before.InboxMessages.Where(x => x.EventId == message.Id && (x.ConsumerName == "kitchen-item-change-v1" || x.ConsumerName == "ordering-signalr-v1")).ToListAsync());
             }
 
-            await fixture.DispatchPhase4Async();
+            await Phase5OutboxDispatchTestHelper.DispatchUntilInboxAsync(fixture, change.OrderItemChangedEventId, "kitchen-item-change-v1");
 
             await using var db = fixture.CreateDbContext();
             var outbox = await db.OutboxMessages.SingleAsync(x => x.Id == change.OrderItemChangedEventId && x.EstablishmentId == order.EstablishmentId);
@@ -94,7 +94,7 @@ public sealed class Phase5ChangeOutboxTests(Phase1ApiFixture fixture)
         hook.FailNext("ordering-signalr-v1", change.OrderItemChangedEventId, new InvalidOperationException("testing-signalr-failure"));
         try
         {
-            await fixture.DispatchPhase4Async();
+            await Phase5OutboxDispatchTestHelper.DispatchUntilInboxAsync(fixture, change.OrderItemChangedEventId, "kitchen-item-change-v1");
             await using (var failed = fixture.CreateDbContext())
             {
                 var outbox = await failed.OutboxMessages.SingleAsync(x => x.Id == change.OrderItemChangedEventId && x.EstablishmentId == order.EstablishmentId);
@@ -109,7 +109,7 @@ public sealed class Phase5ChangeOutboxTests(Phase1ApiFixture fixture)
             Assert.Equal(1, hook.GetInvocationCount("ordering-signalr-v1", change.OrderItemChangedEventId));
 
             // The dispatcher currently selects all unprocessed messages; K3 uses that deterministic eligibility rule.
-            await fixture.DispatchPhase4Async();
+            await Phase5OutboxDispatchTestHelper.DispatchUntilInboxAsync(fixture, change.OrderItemChangedEventId, "ordering-signalr-v1");
             await using (var retried = fixture.CreateDbContext())
             {
                 var outbox = await retried.OutboxMessages.SingleAsync(x => x.Id == change.OrderItemChangedEventId && x.EstablishmentId == order.EstablishmentId);
@@ -145,7 +145,7 @@ public sealed class Phase5ChangeOutboxTests(Phase1ApiFixture fixture)
         var firstHook = fixture.OutboxHook;
         firstHook.Reset();
         firstHook.FailNext("ordering-signalr-v1", change.OrderItemChangedEventId, new InvalidOperationException("testing-signalr-failure"));
-        await fixture.DispatchPhase4Async();
+        await Phase5OutboxDispatchTestHelper.DispatchUntilInboxAsync(fixture, change.OrderItemChangedEventId, "kitchen-item-change-v1");
         await using (var partial = fixture.CreateDbContext())
         {
             Assert.Null(await partial.OutboxMessages.Where(x => x.Id == change.OrderItemChangedEventId).Select(x => x.ProcessedAt).SingleAsync());
@@ -155,7 +155,7 @@ public sealed class Phase5ChangeOutboxTests(Phase1ApiFixture fixture)
 
         var restartedHook = new Phase5OutboxTestHook();
         var restartedDispatcher = fixture.CreateDispatcher(restartedHook);
-        await restartedDispatcher.DispatchOnceAsync(CancellationToken.None);
+        await Phase5OutboxDispatchTestHelper.DispatchUntilInboxAsync(restartedDispatcher, fixture, change.OrderItemChangedEventId, "ordering-signalr-v1");
         await using var after = fixture.CreateDbContext();
         Assert.NotNull(await after.OutboxMessages.Where(x => x.Id == change.OrderItemChangedEventId).Select(x => x.ProcessedAt).SingleAsync());
         Assert.Equal(2, await after.InboxMessages.CountAsync(x => x.EventId == change.OrderItemChangedEventId));
@@ -169,6 +169,7 @@ public sealed class Phase5ChangeOutboxTests(Phase1ApiFixture fixture)
     [Fact]
     public async Task K4ConcurrentDispatchersProcessEachConsumerOnce()
     {
+        await Phase5OutboxDispatchTestHelper.DrainEligibleBacklogAsync(fixture);
         var order = await new Phase5OrderScenarioBuilder(fixture).BuildSimpleAsync();
         var change = await new Phase5ChangeScenarioBuilder(fixture).BuildAsync(order);
         var hook = fixture.OutboxHook;

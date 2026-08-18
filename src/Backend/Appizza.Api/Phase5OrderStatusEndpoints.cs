@@ -50,11 +50,19 @@ public static class Phase5OrderStatusEndpoints
         var itemIds = items.Select(x => x.Id).ToArray();
         var production = await db.Set<ProductionItem>().AsNoTracking().Where(x => itemIds.Contains(x.OrderItemId)).ToListAsync(ct);
         var productionIds = production.Select(x => x.Id).ToArray();
+        var confirmations = await db.Set<DeliveryConfirmation>().AsNoTracking()
+            .Where(x => productionIds.Contains(x.ProductionItemId) && (x.Status == "pending" || x.Status == "confirmed_manual" || x.Status == "confirmed_automatic" || x.Status == "contested"))
+            .OrderByDescending(x => x.SequenceNumber).ToListAsync(ct);
+        var contests = await db.Set<DeliveryContest>().AsNoTracking()
+            .Where(x => productionIds.Contains(x.ProductionItemId) && x.Status == "open").ToListAsync(ct);
         var pendingRequests = await db.Set<OrderItemRequest>().AsNoTracking().Where(x => itemIds.Contains(x.OrderItemId) && new[] { "pending_validation", "pending_customer_confirmation", "pending_operational_decision" }.Contains(x.Status)).ToListAsync(ct);
         var revisions = await db.Set<OrderItemRevision>().AsNoTracking().Where(x => itemIds.Contains(x.OrderItemId)).ToListAsync(ct);
         var activeAttempts = await db.Set<ProductionAttempt>().AsNoTracking().Where(x => productionIds.Contains(x.ProductionItemId) && x.Status == "active").Select(x => new { x.ProductionItemId, x.AttemptNumber, x.StartedAt }).ToListAsync(ct);
         var openPauses = await db.Set<ProductionPause>().AsNoTracking().Where(x => productionIds.Contains(x.ProductionItemId) && x.ResumedAt == null).Select(x => new { x.ProductionItemId, x.PausedAt }).ToListAsync(ct);
+        var openContests = await db.Set<DeliveryContest>().AsNoTracking().Where(x => productionIds.Contains(x.ProductionItemId) && x.Status == "open").Select(x => x.ProductionItemId).ToHashSetAsync(ct);
         var byItem = production.ToDictionary(x => x.OrderItemId);
+        var currentConfirmations = confirmations.GroupBy(x => x.ProductionItemId).ToDictionary(x => x.Key, x => x.First());
+        var currentOpenContests = contests.ToDictionary(x => x.ProductionItemId);
         var attempts = activeAttempts.ToDictionary(x => x.ProductionItemId);
         var pauses = openPauses.ToDictionary(x => x.ProductionItemId);
         var requests = pendingRequests.ToLookup(x => x.OrderItemId);
@@ -65,19 +73,38 @@ public static class Phase5OrderStatusEndpoints
             var publicItems = items.Where(x => x.OrderId == order.Id).Select(item =>
             {
                 byItem.TryGetValue(item.Id, out var operational);
+                var confirmation = operational is null ? null : currentConfirmations.GetValueOrDefault(operational.Id);
+                var contest = operational is null ? null : currentOpenContests.GetValueOrDefault(operational.Id);
                 var attempt = operational is null ? null : attempts.GetValueOrDefault(operational.Id);
                 var pause = operational is null ? null : pauses.GetValueOrDefault(operational.Id);
                 var hasAttempt = attempt is not null;
                 var hasPause = pause is not null;
-                var status = PublicOrderStatusCalculator.Item(new(item.CommercialStatus, operational?.Status, operational?.RequiresProduction ?? false, hasAttempt, hasPause, requests[item.Id].Any()));
+                var hasOpenContest = operational is not null && openContests.Contains(operational.Id);
+                var status = PublicOrderStatusCalculator.Item(new(item.CommercialStatus, operational?.Status, operational?.RequiresProduction ?? false, hasAttempt, hasPause, requests[item.Id].Any(), hasOpenContest));
                 var current = item.CurrentRevisionNumber > 0 ? currentRevisions.GetValueOrDefault((item.Id, item.CurrentRevisionNumber)) : null;
                 object? snapshot = includeSnapshot ? ParseSnapshot(current?.Snapshot ?? item.Snapshot) : null;
                 return new
                 {
                     itemId = item.Id, item.ProductName, item.VariantName, item.ProductType, item.Quantity, item.UnitAmount, item.TotalAmount,
                     commercialStatus = item.CommercialStatus, publicStatus = status.Status, publicSubstatus = status.Substatus,
-                    attentionReasons = status.AttentionReasons, item.Version, item.CatalogRevisionId, item.CatalogVersion,
+                    attentionReasons = status.AttentionReasons, version = operational?.Version ?? item.Version, item.CatalogRevisionId, item.CatalogVersion,
                     item.AvailabilityVersion, item.ConfigurationVersion, item.SnapshotSchemaVersion, item.CurrentRevisionNumber, snapshot,
+                    delivery = confirmation is null && contest is null ? null : new
+                    {
+                        confirmationId = confirmation?.Id,
+                        confirmationStatus = confirmation?.Status,
+                        confirmationVersion = confirmation?.Version,
+                        sequence = confirmation?.SequenceNumber,
+                        requestedAt = confirmation?.RequestedAt,
+                        expiresAt = confirmation?.ExpiresAt,
+                        confirmedAt = confirmation?.ConfirmedAt,
+                        contestId = contest?.Id,
+                        contestStatus = contest?.Status,
+                        contestVersion = contest?.Version,
+                        contestReason = contest?.ResolutionNote,
+                        contestedAt = confirmation?.ContestedAt,
+                        attentionRequired = contest is not null
+                    },
                     production = operational is null ? null : new { operational.RequiresProduction, operational.Status, operational.ReceivedAt, operational.AcceptedAt, operational.PreparationStartedAt, operational.ReadyAt, operational.CurrentAttemptNumber, operational.Version, activeAttemptNumber = hasAttempt ? attempt!.AttemptNumber : (int?)null, activeAttemptStartedAt = hasAttempt ? attempt!.StartedAt : (DateTimeOffset?)null, pausedAt = hasPause ? pause!.PausedAt : (DateTimeOffset?)null },
                     requests = includeSnapshot ? requests[item.Id].Select(x => new { x.Id, x.RequestType, x.Status, x.ReasonCode, x.RequestedAt, x.DecidedAt, x.Version }).ToArray() : null
                 };

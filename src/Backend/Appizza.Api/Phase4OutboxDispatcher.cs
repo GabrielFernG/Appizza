@@ -43,8 +43,23 @@ public sealed class Phase5OutboxTestHook : IPhase5OutboxTestHook
 
 public sealed class Phase4SignalRNotificationPublisher(Microsoft.AspNetCore.SignalR.IHubContext<Phase1Hub> hub) : IPhase4NotificationPublisher
 {
-    public Task PublishAsync(Guid tenant, Guid eventId, string eventType, CancellationToken cancellationToken)
-    { var method = eventType == "order-submitted.v1" ? "OrderSubmitted" : eventType == "production-item-accepted.v1" ? "ProductionItemAccepted" : "ProductionQueueChanged"; return hub.Clients.Group($"establishment:{tenant}").SendAsync(method, new { eventId, eventType }, cancellationToken); }
+    public static IReadOnlyList<string> MethodsFor(string eventType) => eventType switch
+    {
+        "production-item-sent-to-table.v1" => ["DeliveryChanged", "OrderStatusChanged"],
+        "delivery-confirmation-requested.v1" => ["DeliveryChanged"],
+        "delivery-confirmed-by-customer.v1" or "delivery-confirmed-by-employee.v1" or "delivery-auto-confirmed.v1" => ["DeliveryChanged", "OrderStatusChanged"],
+        "production-item-delivered.v1" => ["OrderStatusChanged"],
+        "delivery-contested.v1" or "delivery-contest-resolved.v1" => ["DeliveryChanged", "OrderStatusChanged"],
+        "order-submitted.v1" => ["OrderSubmitted"],
+        "production-item-accepted.v1" => ["ProductionItemAccepted"],
+        _ => ["ProductionQueueChanged"]
+    };
+
+    public async Task PublishAsync(Guid tenant, Guid eventId, string eventType, CancellationToken cancellationToken)
+    {
+        var group = hub.Clients.Group($"establishment:{tenant}");
+        foreach (var method in MethodsFor(eventType)) await group.SendAsync(method, new { eventId, eventType }, cancellationToken);
+    }
 }
 
 public sealed class Phase4OutboxDispatcher(IServiceScopeFactory scopeFactory, IPhase4NotificationPublisher notifications, ILogger<Phase4OutboxDispatcher> logger, IPhase5OutboxTestHook? testHook = null) : BackgroundService
@@ -70,8 +85,20 @@ public sealed class Phase4OutboxDispatcher(IServiceScopeFactory scopeFactory, IP
         ["order-item-change-review-confirmed.v1"] = ["kitchen-request-v1", "ordering-signalr-v1"],
         ["order-item-change-approved.v1"] = ["kitchen-request-v1", "ordering-signalr-v1"],
         ["order-item-change-rejected.v1"] = ["kitchen-request-v1", "ordering-signalr-v1"],
-        ["order-item-changed.v1"] = ["kitchen-item-change-v1", "ordering-signalr-v1"]
+        ["order-item-changed.v1"] = ["kitchen-item-change-v1", "ordering-signalr-v1"],
+        ["production-item-sent-to-table.v1"] = ["ordering-public-status-v1", "delivery-worker-v1", "kitchen-signalr-v1"],
+        ["delivery-confirmation-requested.v1"] = ["delivery-worker-v1", "kitchen-signalr-v1"],
+        ["delivery-confirmed-by-customer.v1"] = ["ordering-public-status-v1", "kitchen-signalr-v1"],
+        ["delivery-confirmed-by-employee.v1"] = ["ordering-public-status-v1", "kitchen-signalr-v1"],
+        ["delivery-auto-confirmed.v1"] = ["ordering-public-status-v1", "kitchen-signalr-v1"],
+        ["production-item-delivered.v1"] = ["ordering-completion-v1", "kitchen-signalr-v1"],
+        ["delivery-contested.v1"] = ["delivery-worker-v1", "kitchen-signalr-v1"],
+        ["delivery-contest-resolved.v1"] = ["ordering-public-status-v1", "kitchen-signalr-v1"]
     };
+
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>> DeliveryConsumerRegistry { get; } =
+        Consumers.Where(static pair => pair.Key is "production-item-sent-to-table.v1" or "delivery-confirmation-requested.v1" or "delivery-confirmed-by-customer.v1" or "delivery-confirmed-by-employee.v1" or "delivery-auto-confirmed.v1" or "production-item-delivered.v1" or "delivery-contested.v1" or "delivery-contest-resolved.v1")
+            .ToDictionary(static pair => pair.Key, static pair => (IReadOnlyList<string>)pair.Value, StringComparer.Ordinal);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -105,7 +132,10 @@ public sealed class Phase4OutboxDispatcher(IServiceScopeFactory scopeFactory, IP
         if (consumer == "kitchen-intake-v1") await Intake(db, message, ct);
         else if (consumer == "kitchen-commercial-change-v1") await CancelProduction(db, message, ct);
         else if (consumer == "kitchen-item-change-v1") await ChangeProduction(db, message, ct);
+        else if (consumer is "ordering-public-status-v1" or "delivery-worker-v1" or "ordering-completion-v1") { }
+        else if (consumer == "kitchen-signalr-v1") await Notify(message, ct);
         else if (consumer.EndsWith("signalr-v1", StringComparison.Ordinal) || consumer == "notifications-v1") await Notify(message, ct);
+        else if (consumer is not ("kitchen-status-projection-v1" or "kitchen-request-v1")) throw new InvalidOperationException($"Unknown Outbox consumer '{consumer}'.");
         db.Add(new InboxMessage { EventId = message.Id, ConsumerName = consumer, ProcessedAt = DateTimeOffset.UtcNow, Result = "succeeded" }); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
 

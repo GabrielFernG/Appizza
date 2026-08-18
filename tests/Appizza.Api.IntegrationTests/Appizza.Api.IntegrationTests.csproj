@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Backend\Appizza.Api\Appizza.Api.csproj" />
+    <ProjectReference Include="..\..\src\Backend\Appizza.Worker\Appizza.Worker.csproj" />
   </ItemGroup>
 
 </Project>

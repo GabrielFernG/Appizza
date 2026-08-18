@@ -10,6 +10,7 @@ using Appizza.Modules.Establishments;
 using Appizza.Modules.Identity;
 using Appizza.Modules.Tables;
 using Appizza.Persistence;
+using Appizza.Worker;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -307,7 +308,9 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
     public TestPhase5ChangeHook ChangeHook => _factory!.Services.GetRequiredService<TestPhase5ChangeHook>();
     public TestPhase5ReviewDiagnostics ReviewDiagnostics => _factory!.Services.GetRequiredService<TestPhase5ReviewDiagnostics>();
     public Phase5OutboxTestHook OutboxHook => _factory!.Services.GetRequiredService<Phase5OutboxTestHook>();
+    public Phase5DeliveryConcurrencyHook DeliveryHook => _factory!.Services.GetRequiredService<Phase5DeliveryConcurrencyHook>();
     public Phase4OutboxDispatcher CreateDispatcher(IPhase5OutboxTestHook hook) => new(_factory!.Services.GetRequiredService<IServiceScopeFactory>(), Notifications, _factory.Services.GetRequiredService<ILogger<Phase4OutboxDispatcher>>(), hook);
+    public DeliveryAutoConfirmationWorker CreateDeliveryAutoConfirmationWorker() => new(_factory!.Services.GetRequiredService<IServiceScopeFactory>());
     public TestLogSink ExceptionSink => _factory!.ExceptionSink;
     public Task DispatchPhase4Async()
     {
@@ -495,16 +498,24 @@ internal sealed class Phase1TestFactory(string connectionString) : WebApplicatio
 public sealed class TestPhase4NotificationPublisher : IPhase4NotificationPublisher
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, int> _deliveries = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, System.Collections.Concurrent.ConcurrentQueue<(Guid Tenant, string Method, string EventType)>> _messages = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> _failedEvents = new();
     public bool Fail { get; set; }
     public int Count(Guid eventId) => _deliveries.TryGetValue(eventId, out var count) ? count : 0;
+    public IReadOnlyList<(Guid Tenant, string Method, string EventType)> Messages(Guid eventId) => _messages.TryGetValue(eventId, out var messages) ? messages.ToArray() : [];
+    public void FailEvent(Guid eventId) => _failedEvents[eventId] = 0;
     public Task PublishAsync(Guid tenant, Guid eventId, string eventType, CancellationToken cancellationToken)
     {
-        if (Fail) throw new InvalidOperationException("controlled-notification-failure");
-        _deliveries.AddOrUpdate(eventId, 1, static (_, count) => count + 1);
+        if (Fail || _failedEvents.ContainsKey(eventId)) throw new InvalidOperationException("testing-delivery-signalr-failure");
+        foreach (var method in Phase4SignalRNotificationPublisher.MethodsFor(eventType))
+        {
+            _deliveries.AddOrUpdate(eventId, 1, static (_, count) => count + 1);
+            _messages.GetOrAdd(eventId, static _ => new()).Enqueue((tenant, method, eventType));
+        }
         return Task.CompletedTask;
     }
 
-    public void Reset() { Fail = false; _deliveries.Clear(); }
+    public void Reset() { Fail = false; _deliveries.Clear(); _messages.Clear(); _failedEvents.Clear(); }
 }
 
 public sealed class TestPhase4OrderingHook : IPhase4OrderingHook

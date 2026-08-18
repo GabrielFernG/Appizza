@@ -12,6 +12,34 @@ namespace Appizza.Api.IntegrationTests;
 public sealed class Phase5OrderStatusApiTests(Phase1ApiFixture fixture)
 {
     [Fact]
+    public async Task OperationsQueueReturnsOnlyCurrentDeliveryAndOpenContest()
+    {
+        var tenant = await fixture.CreateTenantAsync(2, 1);
+        var device = await fixture.RegisterAndBindAsync(tenant.AccessToken, tenant.TableIds[0]);
+        var sessionId = await fixture.OpenSessionAsync(device.AccessToken);
+        var now = DateTimeOffset.UtcNow;
+        var station = new Station { Id = Guid.NewGuid(), EstablishmentId = tenant.EstablishmentId, Name = $"Delivery-{Guid.NewGuid():N}", CreatedAt = now, UpdatedAt = now };
+        var order = new Order { Id = Guid.NewGuid(), EstablishmentId = tenant.EstablishmentId, TableSessionId = sessionId, SourceDeviceId = device.DeviceId, ClientSubmissionId = Guid.NewGuid(), SubtotalAmount = 10, TotalAmount = 10, SubmittedAt = now, CreatedAt = now, UpdatedAt = now };
+        var item = new OrderItem { Id = Guid.NewGuid(), OrderId = order.Id, LocalCartItemId = Guid.NewGuid(), ProductId = Guid.NewGuid(), ProductType = "simple", ProductName = "Delivery", Quantity = 1, UnitAmount = 10, TotalAmount = 10, ConfigurationVersion = "hash", CatalogRevisionId = Guid.NewGuid(), CatalogVersion = 1, AvailabilityVersion = 1, Snapshot = "{}", CreatedAt = now, UpdatedAt = now };
+        var production = new ProductionItem { Id = Guid.NewGuid(), EstablishmentId = tenant.EstablishmentId, OrderItemId = item.Id, StationId = station.Id, Status = "awaiting_delivery_confirmation", RequiresProduction = true, ReceivedAt = now, ReadyAt = now, CurrentAttemptNumber = 1, CreatedAt = now, UpdatedAt = now };
+        var superseded = new DeliveryConfirmation { Id = Guid.NewGuid(), EstablishmentId = tenant.EstablishmentId, ProductionItemId = production.Id, SequenceNumber = 1, Status = "superseded", Version = 2, RequestedAt = now, ExpiresAt = now.AddMinutes(5), SupersededAt = now, CreatedAt = now, UpdatedAt = now };
+        var current = new DeliveryConfirmation { Id = Guid.NewGuid(), EstablishmentId = tenant.EstablishmentId, ProductionItemId = production.Id, SequenceNumber = 2, Status = "contested", Version = 3, RequestedAt = now, ExpiresAt = now.AddMinutes(5), ContestedAt = now, CreatedAt = now, UpdatedAt = now };
+        var contest = new DeliveryContest { Id = Guid.NewGuid(), EstablishmentId = tenant.EstablishmentId, ProductionItemId = production.Id, DeliveryConfirmationId = current.Id, Status = "open", Version = 4, OpenedAt = now, ResolutionNote = "Cliente não recebeu", CreatedAt = now, UpdatedAt = now };
+        await using (var db = fixture.CreateDbContext()) { db.AddRange(station, order, item, production, superseded, current, contest); await db.SaveChangesAsync(); }
+        var response = await fixture.GetAsync("api/v1/operations/kitchen/production-items", tenant.AccessToken);
+        response.EnsureSuccessStatusCode();
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var row = json.RootElement.EnumerateArray().Single(x => x.GetProperty("productionItemId").GetGuid() == production.Id);
+        Assert.Equal(current.Id, row.GetProperty("deliveryConfirmationId").GetGuid());
+        Assert.Equal("contested", row.GetProperty("deliveryConfirmationStatus").GetString());
+        Assert.Equal(3, row.GetProperty("deliveryConfirmationVersion").GetInt64());
+        Assert.Equal(2, row.GetProperty("deliveryConfirmationSequence").GetInt32());
+        Assert.Equal(contest.Id, row.GetProperty("deliveryContestId").GetGuid());
+        Assert.Equal("Cliente não recebeu", row.GetProperty("deliveryContestReason").GetString());
+        Assert.True(row.GetProperty("attentionRequired").GetBoolean());
+    }
+
+    [Fact]
     public async Task EmptySessionAndMultipleOrdersReturnDeterministicStatusWithoutWrites()
     {
         var context = await CreateContext();
