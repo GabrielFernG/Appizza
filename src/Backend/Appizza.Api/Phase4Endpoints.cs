@@ -67,8 +67,63 @@ public static class Phase4Endpoints
         if (!principal.IsTokenType("device") || !Guid.TryParse(idempotencyKey, out _)) return Results.NotFound(); var tenant = principal.RequiredGuid("establishment_id"); var device = principal.RequiredGuid("sub"); var record = await db.IdempotencyRecords.AsNoTracking().SingleOrDefaultAsync(x => x.EstablishmentId == tenant && x.OperationType == "ordering.submit" && x.IdempotencyKey == idempotencyKey, ct); if (record?.ResponsePayload is null) return Results.NotFound(); using var payload = JsonDocument.Parse(record.ResponsePayload); var orderId = payload.RootElement.GetProperty("order").GetProperty("id").GetGuid(); if (!await db.Set<Order>().AnyAsync(x => x.Id == orderId && x.EstablishmentId == tenant && x.SourceDeviceId == device, ct)) return Results.NotFound(); return Results.Content(record.ResponsePayload, "application/json", statusCode: record.ResponseStatus ?? 201);
     }
     private static async Task<IResult> Stations(ClaimsPrincipal p, AppizzaDbContext db, CancellationToken ct) { var denied = await Authorize(p, db, "kitchen.queue.view", ct); if (denied is not null) return denied; var tenant = p.RequiredGuid("establishment_id"); return Results.Ok(await db.Set<Station>().AsNoTracking().Where(x => x.EstablishmentId == tenant && x.Status == "active").OrderBy(x => x.DisplayOrder).Select(x => new { x.Id, x.Name, x.IsDefault }).ToListAsync(ct)); }
-    private static async Task<IResult> Queue(Guid? stationId, ClaimsPrincipal p, AppizzaDbContext db, CancellationToken ct) { var denied = await Authorize(p, db, "kitchen.queue.view", ct); if (denied is not null) return denied; var tenant = p.RequiredGuid("establishment_id"); if (stationId is Guid station && !await db.Set<Station>().AnyAsync(x => x.Id == station && x.EstablishmentId == tenant, ct)) return Results.NotFound(); var query = db.Set<ProductionItem>().AsNoTracking().Where(x => x.EstablishmentId == tenant && (x.Status == "awaiting_acceptance" || x.Status == "awaiting_preparation")); if (stationId is not null) query = query.Where(x => x.StationId == stationId); return Results.Ok(await query.OrderBy(x => x.QueuePosition).Select(x => new { x.Id, x.OrderItemId, x.StationId, x.Status, x.QueuePosition, x.RequiresProduction, x.ReceivedAt }).ToListAsync(ct)); }
-    private static async Task<IResult> Detail(Guid id, ClaimsPrincipal p, AppizzaDbContext db, CancellationToken ct) { var denied = await Authorize(p, db, "kitchen.production.view", ct); if (denied is not null) return denied; var tenant = p.RequiredGuid("establishment_id"); var row = await (from production in db.Set<ProductionItem>() join item in db.Set<OrderItem>() on production.OrderItemId equals item.Id where production.Id == id && production.EstablishmentId == tenant select new { production.Id, production.Status, production.StationId, production.QueuePosition, item.ProductName, item.VariantName, item.Quantity, item.Snapshot }).SingleOrDefaultAsync(ct); return row is null ? Results.NotFound() : Results.Ok(row); }
+    private static async Task<IResult> Queue(Guid? stationId, ClaimsPrincipal p, AppizzaDbContext db, CancellationToken ct)
+    {
+        var denied = await Authorize(p, db, "kitchen.queue.view", ct);
+        if (denied is not null) return denied;
+        var tenant = p.RequiredGuid("establishment_id");
+        if (stationId is Guid station && !await db.Set<Station>().AnyAsync(x => x.Id == station && x.EstablishmentId == tenant, ct)) return Results.NotFound();
+
+        var query = db.Set<ProductionItem>().AsNoTracking().Where(x => x.EstablishmentId == tenant);
+        if (stationId is not null) query = query.Where(x => x.StationId == stationId);
+        var production = await query.OrderBy(x => x.QueuePosition).Select(x => new
+        {
+            x.Id, x.OrderItemId, x.StationId, x.Status, x.QueuePosition, x.RequiresProduction,
+            x.ReceivedAt, x.PreparationStartedAt, x.CurrentAttemptNumber, x.Version
+        }).ToListAsync(ct);
+
+        var ids = production.Select(x => x.Id).ToArray();
+        var confirmations = await db.Set<DeliveryConfirmation>().AsNoTracking()
+            .Where(x => ids.Contains(x.ProductionItemId) && x.EstablishmentId == tenant &&
+                        (x.Status == "pending" || x.Status == "contested" || x.Status == "confirmed_manual" || x.Status == "confirmed_automatic"))
+            .OrderByDescending(x => x.SequenceNumber)
+            .Select(x => new { x.ProductionItemId, x.Id, x.Status, x.Version, x.SequenceNumber, x.RequestedAt, x.ConfirmedAt })
+            .ToListAsync(ct);
+        var contests = await db.Set<DeliveryContest>().AsNoTracking()
+            .Where(x => ids.Contains(x.ProductionItemId) && x.EstablishmentId == tenant && x.Status == "open")
+            .Select(x => new { x.ProductionItemId, x.Id, x.Status, x.Version, x.ResolutionNote, x.CreatedAt })
+            .ToListAsync(ct);
+        var currentConfirmations = confirmations.GroupBy(x => x.ProductionItemId).ToDictionary(x => x.Key, x => x.First());
+        var openContests = contests.ToDictionary(x => x.ProductionItemId);
+
+        return Results.Ok(production.Select(item =>
+        {
+            currentConfirmations.TryGetValue(item.Id, out var confirmation);
+            openContests.TryGetValue(item.Id, out var contest);
+              return new
+              {
+                // Backward-compatible aliases consumed by the existing Kitchen view.
+                id = item.Id,
+                productionItemId = item.Id, item.OrderItemId, item.StationId, item.Status, item.QueuePosition,
+                item.RequiresProduction, item.ReceivedAt, item.PreparationStartedAt, item.CurrentAttemptNumber,
+                version = item.Version,
+                productionVersion = item.Version,
+                deliveryConfirmationId = confirmation?.Id,
+                deliveryConfirmationStatus = confirmation?.Status,
+                deliveryConfirmationVersion = confirmation?.Version,
+                deliveryConfirmationSequence = confirmation?.SequenceNumber,
+                deliveryConfirmationRequestedAt = confirmation?.RequestedAt,
+                deliveryConfirmationConfirmedAt = confirmation?.ConfirmedAt,
+                deliveryContestId = contest?.Id,
+                deliveryContestStatus = contest?.Status,
+                deliveryContestVersion = contest?.Version,
+                deliveryContestReason = contest?.ResolutionNote,
+                deliveryContestCreatedAt = contest?.CreatedAt,
+                attentionRequired = contest is not null
+            };
+        }));
+    }
+    private static async Task<IResult> Detail(Guid id, ClaimsPrincipal p, AppizzaDbContext db, CancellationToken ct) { var denied = await Authorize(p, db, "kitchen.production.view", ct); if (denied is not null) return denied; var tenant = p.RequiredGuid("establishment_id"); var row = await (from production in db.Set<ProductionItem>() join item in db.Set<OrderItem>() on production.OrderItemId equals item.Id where production.Id == id && production.EstablishmentId == tenant select new { production.Id, production.Status, production.StationId, production.QueuePosition, production.PreparationStartedAt, production.ReadyAt, production.CurrentAttemptNumber, production.Version, item.ProductName, item.VariantName, item.Quantity, item.Snapshot }).SingleOrDefaultAsync(ct); if (row is null) return Results.NotFound(); var attempts = await db.Set<ProductionAttempt>().AsNoTracking().Where(x => x.ProductionItemId == id).OrderBy(x => x.AttemptNumber).ToListAsync(ct); var pauses = await db.Set<ProductionPause>().AsNoTracking().Where(x => x.ProductionItemId == id).OrderBy(x => x.PausedAt).ToListAsync(ct); var history = await db.Set<ProductionStatusHistory>().AsNoTracking().Where(x => x.ProductionItemId == id).OrderBy(x => x.ChangedAt).ToListAsync(ct); return Results.Ok(new { item = row, attempts, pauses, history }); }
     private static async Task<IResult> Accept(Guid id, HttpRequest http, ClaimsPrincipal p, AppizzaDbContext db, CancellationToken ct)
     {
         var denied = await Authorize(p, db, "kitchen.production.accept", ct); if (denied is not null) return denied; if (!Guid.TryParse(http.Headers["Idempotency-Key"], out var key)) return Error(400, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key UUID é obrigatório."); var tenant = p.RequiredGuid("establishment_id"); var user = p.RequiredGuid("sub"); const string op = "kitchen.accept"; var hash = Phase4Pricing.Hash(id.ToString("N")); await using var tx = await db.Database.BeginTransactionAsync(ct); await AdvisoryLock(db, $"{tenant:N}|{op}|{key:N}", ct); var replay = await db.IdempotencyRecords.SingleOrDefaultAsync(x => x.EstablishmentId == tenant && x.OperationType == op && x.IdempotencyKey == key.ToString(), ct); if (replay is not null) { if (replay.RequestHash != hash) return Error(409, "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST", "Chave reutilizada."); await tx.CommitAsync(ct); return Results.Content(replay.ResponsePayload!, "application/json"); }

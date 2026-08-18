@@ -1,0 +1,328 @@
+﻿using System.Net;
+using System.Text.Json;
+using Appizza.Modules.Ordering;
+using Microsoft.EntityFrameworkCore;
+
+namespace Appizza.Api.IntegrationTests;
+
+[Collection(Phase1ApiCollection.Name)]
+public sealed class Phase5ChangeApiTests(Phase1ApiFixture fixture)
+{
+    [Fact]
+    public async Task IncreaseRequiresExactReviewAndCreatesImmutableRevision()
+    {
+        var seed = await SeedOrder(); var original = seed.Snapshot; var created = await Change(seed, seed.ExpensiveVariant, Guid.NewGuid()); Assert.Equal(HttpStatusCode.Created, created.StatusCode); using var request = JsonDocument.Parse(await created.Content.ReadAsStringAsync()); Assert.Equal("pending_customer_confirmation", request.RootElement.GetProperty("status").GetString()); var requestId = request.RootElement.GetProperty("requestId").GetGuid(); var version = request.RootElement.GetProperty("requestVersion").GetInt32(); var reviewHash = request.RootElement.GetProperty("reviewHash").GetString()!;
+        await using (var before = fixture.CreateDbContext()) { Assert.Equal(0, await before.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(12.50m, await before.Set<OrderItem>().Where(x => x.Id == seed.ItemId).Select(x => x.UnitAmount).SingleAsync()); }
+        var confirmed = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{requestId}/confirm-review", new { requestVersion = version, reviewHash, accepted = true }, seed.DeviceToken, Guid.NewGuid()); confirmed.EnsureSuccessStatusCode();
+        await using var db = fixture.CreateDbContext(); var item = await db.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); Assert.Equal(1, item.CurrentRevisionNumber); Assert.Equal(20m, item.UnitAmount); Assert.Equal(original, item.Snapshot); var revision = await db.Set<OrderItemRevision>().SingleAsync(x => x.OrderItemId == item.Id); Assert.Equal(12.50m, revision.PreviousUnitAmount); Assert.Equal(20m, revision.UnitAmount); Assert.Equal(7.50m, revision.PriceDifference); Assert.Equal(requestId, revision.SourceRequestId); Assert.Equal(20m, await db.Set<Order>().Where(x => x.Id == seed.OrderId).Select(x => x.TotalAmount).SingleAsync()); Assert.Equal(20m, await db.Set<Appizza.Modules.Tables.TableSession>().Where(x => x.Id == seed.SessionId).Select(x => x.TotalAmount).SingleAsync()); Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1"));
+    }
+
+    [Fact]
+    public async Task BlockedDeviceCannotCreateChangeAfterCredentialRevalidation()
+    {
+        var seed = await SeedOrder();
+        Guid deviceId;
+        await using (var lookup = fixture.CreateDbContext())
+            deviceId = await lookup.Set<Appizza.Modules.Devices.Device>().Where(x => x.EstablishmentId == seed.TenantId && x.Status == "active").Select(x => x.Id).SingleAsync();
+        (await fixture.PostAsync($"api/v1/operations/table-devices/{deviceId}/block", null, seed.UserToken)).EnsureSuccessStatusCode();
+        var response = await Change(seed, seed.ExpensiveVariant, Guid.NewGuid());
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("DEVICE_BLOCKED", await fixture.ErrorCodeAsync(response));
+        await using var db = fixture.CreateDbContext();
+        Assert.Equal(0, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId));
+        Assert.Equal(0, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1"));
+    }
+
+    [Fact]
+    public async Task ChangeWinsStartPreparationAndStartUsesEffectiveRevision()
+    {
+        var seed = await SeedOrder(initialExpensive: true); await EnsureProduction(seed, "awaiting_preparation");
+        var gate = fixture.ChangeHook.Pause("change-after-locks");
+        var changeTask = Change(seed, seed.CheapVariant, Guid.NewGuid()); await gate.Reached;
+        var productionId = await ProductionId(seed);
+        var startTask = fixture.PostWithIdempotencyAsync($"api/v1/operations/kitchen/production-items/{productionId}/start-preparation", new { }, seed.UserToken, Guid.NewGuid());
+        gate.Release();
+        var change = await changeTask; change.EnsureSuccessStatusCode(); var start = await startTask; start.EnsureSuccessStatusCode();
+        await using var db = fixture.CreateDbContext();
+        var item = await db.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); var production = await db.Set<Appizza.Modules.Kitchen.ProductionItem>().SingleAsync(x => x.Id == productionId);
+        Assert.Equal(1, item.CurrentRevisionNumber); Assert.Equal("in_preparation", production.Status); Assert.Equal(1, await db.Set<Appizza.Modules.Kitchen.ProductionAttempt>().CountAsync(x => x.ProductionItemId == productionId)); Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1"));
+    }
+
+    [Fact]
+    public async Task StartPreparationWinsAndChangeRevalidatesInPreparation()
+    {
+        var seed = await SeedOrder(initialExpensive: true); await EnsureProduction(seed, "awaiting_preparation");
+        var gate = fixture.ChangeHook.Pause("change-before-locks");
+        var changeTask = Change(seed, seed.CheapVariant, Guid.NewGuid()); await gate.Reached;
+        var productionId = await ProductionId(seed); var start = await fixture.PostWithIdempotencyAsync($"api/v1/operations/kitchen/production-items/{productionId}/start-preparation", new { }, seed.UserToken, Guid.NewGuid()); start.EnsureSuccessStatusCode(); gate.Release();
+        var change = await changeTask; change.EnsureSuccessStatusCode(); using var payload = JsonDocument.Parse(await change.Content.ReadAsStringAsync()); Assert.Equal("pending_operational_decision", payload.RootElement.GetProperty("status").GetString());
+        await using var db = fixture.CreateDbContext(); var item = await db.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); var production = await db.Set<Appizza.Modules.Kitchen.ProductionItem>().SingleAsync(x => x.Id == productionId); Assert.Equal(0, item.CurrentRevisionNumber); Assert.Equal("in_preparation", production.Status); Assert.Equal(1, await db.Set<Appizza.Modules.Kitchen.ProductionAttempt>().CountAsync(x => x.ProductionItemId == productionId)); Assert.Equal(0, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1"));
+    }
+
+    [Fact]
+    public async Task ChangeWinsPauseAndContinuePreservesAttemptBeforePause()
+    {
+        var seed = await SeedOrder(initialExpensive: true, productionStatus: "in_preparation");
+        var productionId = await ProductionId(seed);
+        var gate = fixture.ChangeHook.Pause("change-after-locks");
+        var changeTask = Change(seed, seed.CheapVariant, Guid.NewGuid()); await gate.Reached;
+        var pauseTask = fixture.PostWithIdempotencyAsync($"api/v1/operations/kitchen/production-items/{productionId}/pause", new { reasonCode = "customer-change-race" }, seed.UserToken, Guid.NewGuid());
+        gate.Release();
+        var change = await changeTask; change.EnsureSuccessStatusCode(); var changeJson = JsonDocument.Parse(await change.Content.ReadAsStringAsync()); Assert.Equal("pending_operational_decision", changeJson.RootElement.GetProperty("status").GetString());
+        var requestId = changeJson.RootElement.GetProperty("requestId").GetGuid(); var decision = await fixture.PostWithIdempotencyAsync($"api/v1/operations/order-item-requests/{requestId}/decide", new { decision = "approve", productionAction = "continue", reason = "preservar tentativa" }, seed.UserToken, Guid.NewGuid()); decision.EnsureSuccessStatusCode(); var pause = await pauseTask; pause.EnsureSuccessStatusCode();
+        await using var db = fixture.CreateDbContext(); var item = await db.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); var production = await db.Set<Appizza.Modules.Kitchen.ProductionItem>().SingleAsync(x => x.Id == productionId);
+        Assert.Equal(1, item.CurrentRevisionNumber); Assert.Equal("paused", production.Status); Assert.Equal(1, await db.Set<Appizza.Modules.Kitchen.ProductionAttempt>().CountAsync(x => x.ProductionItemId == productionId)); Assert.Equal(1, await db.Set<Appizza.Modules.Kitchen.ProductionPause>().CountAsync(x => x.ProductionItemId == productionId && x.ResumedAt == null)); Assert.Equal(1, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1"));
+    }
+
+    [Fact]
+    public async Task PauseWinsChangeAndChangeRevalidatesPausedState()
+    {
+        var seed = await SeedOrder(initialExpensive: true, productionStatus: "in_preparation");
+        var productionId = await ProductionId(seed); var gate = fixture.ChangeHook.Pause("change-before-locks");
+        var changeTask = Change(seed, seed.CheapVariant, Guid.NewGuid()); await gate.Reached;
+        var pause = await fixture.PostWithIdempotencyAsync($"api/v1/operations/kitchen/production-items/{productionId}/pause", new { reasonCode = "pause-wins" }, seed.UserToken, Guid.NewGuid()); pause.EnsureSuccessStatusCode(); gate.Release();
+        var change = await changeTask; change.EnsureSuccessStatusCode(); using var changeJson = JsonDocument.Parse(await change.Content.ReadAsStringAsync()); Assert.Equal("pending_operational_decision", changeJson.RootElement.GetProperty("status").GetString());
+        await using var db = fixture.CreateDbContext(); var item = await db.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); var production = await db.Set<Appizza.Modules.Kitchen.ProductionItem>().SingleAsync(x => x.Id == productionId);
+        Assert.Equal(0, item.CurrentRevisionNumber); Assert.Equal("paused", production.Status); Assert.Equal(1, await db.Set<Appizza.Modules.Kitchen.ProductionPause>().CountAsync(x => x.ProductionItemId == productionId && x.ResumedAt == null)); Assert.Equal(1, await db.Set<Appizza.Modules.Kitchen.ProductionAttempt>().CountAsync(x => x.ProductionItemId == productionId && x.Status == "active")); Assert.Equal(0, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1"));
+    }
+
+    [Fact]
+    public async Task ChangeWinsReadyAndReadyCompletesTheEffectiveAttempt()
+    {
+        var seed = await SeedOrder(initialExpensive: true, productionStatus: "in_preparation"); var productionId = await ProductionId(seed);
+        var change = await Change(seed, seed.CheapVariant, Guid.NewGuid()); change.EnsureSuccessStatusCode(); using var changeJson = JsonDocument.Parse(await change.Content.ReadAsStringAsync()); Assert.Equal("pending_operational_decision", changeJson.RootElement.GetProperty("status").GetString());
+        var requestId = changeJson.RootElement.GetProperty("requestId").GetGuid(); var decision = await fixture.PostWithIdempotencyAsync($"api/v1/operations/order-item-requests/{requestId}/decide", new { decision = "approve", productionAction = "continue", reason = "mudanÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§a antes de pronto" }, seed.UserToken, Guid.NewGuid()); decision.EnsureSuccessStatusCode();
+        var ready = await fixture.PostWithIdempotencyAsync($"api/v1/operations/kitchen/production-items/{productionId}/ready", new { }, seed.UserToken, Guid.NewGuid()); ready.EnsureSuccessStatusCode();
+        await using var db = fixture.CreateDbContext(); var item = await db.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); var production = await db.Set<Appizza.Modules.Kitchen.ProductionItem>().SingleAsync(x => x.Id == productionId); Assert.Equal(1, item.CurrentRevisionNumber); Assert.Equal("ready", production.Status); Assert.Equal(1, await db.Set<Appizza.Modules.Kitchen.ProductionAttempt>().CountAsync(x => x.ProductionItemId == productionId && x.Status == "completed")); Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1")); Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "production-item-ready.v1")); Assert.Equal(0, await db.Set<Appizza.Modules.Kitchen.ProductionPause>().CountAsync(x => x.ProductionItemId == productionId && x.ResumedAt == null));
+    }
+
+    [Fact]
+    public async Task ReadyWinsChangeAndChangeRejectsReadyStateWithoutMutation()
+    {
+        var seed = await SeedOrder(initialExpensive: true, productionStatus: "in_preparation"); var productionId = await ProductionId(seed); var gate = fixture.ChangeHook.Pause("change-before-locks");
+        var changeTask = Change(seed, seed.CheapVariant, Guid.NewGuid()); await gate.Reached;
+        var ready = await fixture.PostWithIdempotencyAsync($"api/v1/operations/kitchen/production-items/{productionId}/ready", new { }, seed.UserToken, Guid.NewGuid()); ready.EnsureSuccessStatusCode(); gate.Release();
+        var change = await changeTask; Assert.Equal(HttpStatusCode.Conflict, change.StatusCode); Assert.Equal("ORDER_ITEM_CHANGE_NOT_ALLOWED", await fixture.ErrorCodeAsync(change));
+        await using var db = fixture.CreateDbContext(); var item = await db.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); var production = await db.Set<Appizza.Modules.Kitchen.ProductionItem>().SingleAsync(x => x.Id == productionId); Assert.Equal(0, item.CurrentRevisionNumber); Assert.Equal("ready", production.Status); Assert.Equal(1, await db.Set<Appizza.Modules.Kitchen.ProductionAttempt>().CountAsync(x => x.ProductionItemId == productionId && x.Status == "completed")); Assert.Equal(0, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1")); Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "production-item-ready.v1"));
+    }
+
+    [Fact]
+    public async Task ChangeWinsCancellationAndCancellationUsesEffectiveRevision()
+    {
+        var seed = await SeedOrder(initialExpensive: true); var gate = fixture.ChangeHook.Pause("change-after-locks");
+        var changeTask = Change(seed, seed.CheapVariant, Guid.NewGuid()); await gate.Reached;
+        var cancellationTask = fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-items/{seed.ItemId}/cancellation-requests", new { reasonCode = "CUSTOMER_REQUEST", expectedOrderItemVersion = (long?)null }, seed.DeviceToken, Guid.NewGuid());
+        gate.Release(); var change = await changeTask; change.EnsureSuccessStatusCode(); using var changePayload = JsonDocument.Parse(await change.Content.ReadAsStringAsync()); Assert.Equal("approved", changePayload.RootElement.GetProperty("status").GetString()); var cancellation = await cancellationTask; cancellation.EnsureSuccessStatusCode();
+        await using var db = fixture.CreateDbContext(); var item = await db.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); var order = await db.Set<Order>().SingleAsync(x => x.Id == seed.OrderId); var session = await db.Set<Appizza.Modules.Tables.TableSession>().SingleAsync(x => x.Id == seed.SessionId);
+        Assert.Equal("cancelled", item.CommercialStatus);
+        Assert.Equal(1, item.CurrentRevisionNumber);
+        Assert.Equal(0m, order.TotalAmount);
+        Assert.Equal(0m, session.TotalAmount);
+        Assert.Equal(1, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId));
+        Assert.Equal(1, await db.Set<OrderItemRequest>().CountAsync(x => x.OrderItemId == seed.ItemId && x.RequestType == "change"));
+        Assert.Equal(1, await db.Set<OrderItemRequest>().CountAsync(x => x.OrderItemId == seed.ItemId && x.RequestType == "cancel"));
+        Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1"));
+        Assert.Equal(2, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && (x.EventType == "order-item-cancellation-approved.v1" || x.EventType == "order-item-cancelled.v1")));
+    }
+
+    [Fact]
+    public async Task CancellationWinsChangeAndChangeRevalidatesCancelledItem()
+    {
+        var seed = await SeedOrder(initialExpensive: true); var gate = fixture.ChangeHook.Pause("change-before-locks"); var changeTask = Change(seed, seed.CheapVariant, Guid.NewGuid()); await gate.Reached;
+        var cancellation = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-items/{seed.ItemId}/cancellation-requests", new { reasonCode = "CUSTOMER_REQUEST", expectedOrderItemVersion = (long?)null }, seed.DeviceToken, Guid.NewGuid()); cancellation.EnsureSuccessStatusCode(); gate.Release();
+        var change = await changeTask; Assert.Equal(HttpStatusCode.Conflict, change.StatusCode); Assert.Equal("ORDER_ITEM_CHANGE_NOT_ALLOWED", await fixture.ErrorCodeAsync(change));
+        await using var db = fixture.CreateDbContext(); var item = await db.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); var order = await db.Set<Order>().SingleAsync(x => x.Id == seed.OrderId); var session = await db.Set<Appizza.Modules.Tables.TableSession>().SingleAsync(x => x.Id == seed.SessionId);
+        Assert.Equal("cancelled", item.CommercialStatus); Assert.Equal(0, item.CurrentRevisionNumber); Assert.Equal(0m, order.TotalAmount); Assert.Equal(0m, session.TotalAmount); Assert.Equal(0, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-cancelled.v1")); Assert.Equal(1, await db.IdempotencyRecords.CountAsync(x => x.EstablishmentId == seed.TenantId && x.OperationType == "ordering.change.create" && x.ResponseStatus == 409));
+    }
+
+    [Fact]
+    public async Task CustomerReviewFirstDoesNotApplyChangeUntilKitchenDecision()
+    {
+        var seed = await SeedOrder(initialExpensive: false, productionStatus: "in_preparation"); var created = await Change(seed, seed.ExpensiveVariant, Guid.NewGuid()); created.EnsureSuccessStatusCode(); using var payload = JsonDocument.Parse(await created.Content.ReadAsStringAsync()); var requestId = payload.RootElement.GetProperty("requestId").GetGuid(); var body = new { requestVersion = payload.RootElement.GetProperty("requestVersion").GetInt32(), reviewHash = payload.RootElement.GetProperty("reviewHash").GetString(), accepted = true };
+        var review = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{requestId}/confirm-review", body, seed.DeviceToken, Guid.NewGuid()); review.EnsureSuccessStatusCode(); await using (var before = fixture.CreateDbContext()) { Assert.Equal(0, await before.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal("pending_operational_decision", await before.Set<OrderItemRequest>().Where(x => x.Id == requestId).Select(x => x.Status).SingleAsync()); }
+        var decision = await fixture.PostWithIdempotencyAsync($"api/v1/operations/order-item-requests/{requestId}/decide", new { decision = "approve", productionAction = "continue", reason = "aprovaÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o kitchen" }, seed.UserToken, Guid.NewGuid()); decision.EnsureSuccessStatusCode();
+        await using var db = fixture.CreateDbContext(); Assert.Equal(1, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(1, await db.Set<OrderItem>().Where(x => x.Id == seed.ItemId).Select(x => x.CurrentRevisionNumber).SingleAsync()); Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1"));
+    }
+
+    [Fact]
+    public async Task KitchenDecisionFirstIsRecordedButCannotApplyUntilCustomerReview()
+    {
+        var seed = await SeedOrder(initialExpensive: false, productionStatus: "in_preparation"); var created = await Change(seed, seed.ExpensiveVariant, Guid.NewGuid()); created.EnsureSuccessStatusCode(); using var payload = JsonDocument.Parse(await created.Content.ReadAsStringAsync()); var requestId = payload.RootElement.GetProperty("requestId").GetGuid();
+        var decision = await fixture.PostWithIdempotencyAsync($"api/v1/operations/order-item-requests/{requestId}/decide", new { decision = "approve", productionAction = "continue", reason = "decisÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o antecipada" }, seed.UserToken, Guid.NewGuid()); decision.EnsureSuccessStatusCode(); await using (var before = fixture.CreateDbContext()) { var request = await before.Set<OrderItemRequest>().SingleAsync(x => x.Id == requestId); Assert.Equal("pending_customer_confirmation", request.Status); Assert.Equal("continue", request.ProductionAction); Assert.Equal(0, await before.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); }
+        var review = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{requestId}/confirm-review", new { requestVersion = payload.RootElement.GetProperty("requestVersion").GetInt32(), reviewHash = payload.RootElement.GetProperty("reviewHash").GetString(), accepted = true }, seed.DeviceToken, Guid.NewGuid()); review.EnsureSuccessStatusCode();
+        await using var db = fixture.CreateDbContext(); Assert.Equal(1, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(1, await db.Set<OrderItem>().Where(x => x.Id == seed.ItemId).Select(x => x.CurrentRevisionNumber).SingleAsync()); Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1"));
+    }
+
+    [Fact]
+    public async Task ReductionIsAutomaticAndNextChangeUsesEffectiveRevision()
+    {
+        var seed = await SeedOrder(initialExpensive: true); var first = await Change(seed, seed.CheapVariant, Guid.NewGuid()); first.EnsureSuccessStatusCode(); using var firstJson = JsonDocument.Parse(await first.Content.ReadAsStringAsync()); Assert.Equal("approved", firstJson.RootElement.GetProperty("status").GetString());
+        var second = await Change(seed, seed.MidVariant, Guid.NewGuid()); second.EnsureSuccessStatusCode(); using var secondJson = JsonDocument.Parse(await second.Content.ReadAsStringAsync()); Assert.Equal("pending_customer_confirmation", secondJson.RootElement.GetProperty("status").GetString()); Assert.Equal(2.50m, secondJson.RootElement.GetProperty("priceDifference").GetDecimal());
+        await using var db = fixture.CreateDbContext(); var revision = await db.Set<OrderItemRevision>().SingleAsync(x => x.OrderItemId == seed.ItemId); Assert.Equal(-7.50m, revision.PriceDifference); Assert.Equal(1, await db.Set<OrderItem>().Where(x => x.Id == seed.ItemId).Select(x => x.CurrentRevisionNumber).SingleAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentChangeAndCancellationAllowOnlyOnePendingIntentAndCrossTenantIsHidden()
+    {
+        var seed = await SeedOrder(); var responses = await fixture.ConcurrentAsync(() => Change(seed, seed.ExpensiveVariant, Guid.NewGuid()), () => fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-items/{seed.ItemId}/cancellation-requests", new { reasonCode = "CUSTOMER_REQUEST" }, seed.DeviceToken, Guid.NewGuid())); Assert.Single(responses, x => x.StatusCode == HttpStatusCode.Created); Assert.Single(responses, x => x.StatusCode == HttpStatusCode.Conflict);
+        var foreign = await SeedOrder(); var denied = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-items/{foreign.ItemId}/change-requests", new { configuration = new { productVariantId = seed.ExpensiveVariant } }, seed.DeviceToken, Guid.NewGuid()); Assert.Equal(HttpStatusCode.NotFound, denied.StatusCode); await using var db = fixture.CreateDbContext(); Assert.Equal(0, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == foreign.ItemId));
+    }
+
+    [Fact]
+    public async Task ObsoleteReviewAndReadyStateNeverMutateCommercialHistory()
+    {
+        var seed = await SeedOrder(); var created = await Change(seed, seed.ExpensiveVariant, Guid.NewGuid()); using var json = JsonDocument.Parse(await created.Content.ReadAsStringAsync()); var id = json.RootElement.GetProperty("requestId").GetGuid(); var obsolete = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{id}/confirm-review", new { requestVersion = 99, reviewHash = json.RootElement.GetProperty("reviewHash").GetString(), accepted = true }, seed.DeviceToken, Guid.NewGuid()); Assert.Equal(HttpStatusCode.Conflict, obsolete.StatusCode); Assert.Equal("CUSTOMER_REVIEW_OBSOLETE", await fixture.ErrorCodeAsync(obsolete));
+        var ready = await SeedOrder(productionStatus: "ready"); var forbidden = await Change(ready, ready.ExpensiveVariant, Guid.NewGuid()); Assert.Equal(HttpStatusCode.Conflict, forbidden.StatusCode); Assert.Equal("ORDER_ITEM_CHANGE_NOT_ALLOWED", await fixture.ErrorCodeAsync(forbidden)); await using var db = fixture.CreateDbContext(); Assert.Equal(0, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == ready.ItemId));
+    }
+
+    [Theory]
+    [InlineData("continue", 1)]
+    [InlineData("restart", 2)]
+    public async Task KitchenExplicitlyContinuesOrRestartsAfterChange(string action, int expectedAttempts)
+    {
+        var seed = await SeedOrder(initialExpensive: true, productionStatus: "in_preparation"); var created = await Change(seed, seed.CheapVariant, Guid.NewGuid()); created.EnsureSuccessStatusCode(); using var createdJson = JsonDocument.Parse(await created.Content.ReadAsStringAsync()); Assert.Equal("pending_operational_decision", createdJson.RootElement.GetProperty("status").GetString()); var requestId = createdJson.RootElement.GetProperty("requestId").GetGuid();
+        var decided = await fixture.PostWithIdempotencyAsync($"api/v1/operations/order-item-requests/{requestId}/decide", new { decision = "approve", productionAction = action, reason = "decisÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o explÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â­cita" }, seed.UserToken, Guid.NewGuid()); decided.EnsureSuccessStatusCode(); await fixture.DispatchPhase4Async(); await fixture.DispatchPhase4Async();
+        await using var db = fixture.CreateDbContext(); var productionId = await db.Set<Appizza.Modules.Kitchen.ProductionItem>().Where(x => x.OrderItemId == seed.ItemId).Select(x => x.Id).SingleAsync(); Assert.Equal(expectedAttempts, await db.Set<Appizza.Modules.Kitchen.ProductionAttempt>().CountAsync(x => x.ProductionItemId == productionId)); Assert.Equal(1, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId));
+    }
+
+    [Fact]
+    public async Task ThreeSequentialChangesAreAppendOnlyAndUseCurrentRevisionAsBaseline()
+    {
+        var seed = await SeedOrder(); var original = seed.Snapshot;
+        await CompleteChange(seed, seed.ExpensiveVariant); await CompleteChange(seed, seed.MidVariant); await CompleteChange(seed, seed.ExpensiveVariant);
+        await using var db = fixture.CreateDbContext(); var item = await db.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); var revisions = await db.Set<OrderItemRevision>().Where(x => x.OrderItemId == seed.ItemId).OrderBy(x => x.RevisionNumber).ToListAsync();
+        Assert.Equal(3, item.CurrentRevisionNumber); Assert.Equal(original, item.Snapshot); Assert.Equal([1, 2, 3], revisions.Select(x => x.RevisionNumber)); Assert.Equal([(12.50m, 20m, 7.50m), (20m, 15m, -5m), (15m, 20m, 5m)], revisions.Select(x => (x.PreviousUnitAmount, x.UnitAmount, x.PriceDifference)));
+        var revisionPayloads = revisions.Select(x => x.Snapshot).ToArray(); var productId = await db.Set<Appizza.Modules.Catalog.ProductVariant>().Where(x => x.Id == seed.CheapVariant).Select(x => x.ProductId).SingleAsync(); var product = await db.Set<Appizza.Modules.Catalog.Product>().SingleAsync(x => x.Id == productId); product.Name = "Nome posterior"; product.Description = "DescriÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â§ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â£o posterior"; product.Status = "archived"; product.Version++; var variants = await db.Set<Appizza.Modules.Catalog.ProductVariant>().Where(x => x.ProductId == productId).ToListAsync(); foreach (var variant in variants) { variant.BasePrice += 100; variant.Version++; } await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        Assert.Equal(original, await db.Set<OrderItem>().Where(x => x.Id == seed.ItemId).Select(x => x.Snapshot).SingleAsync()); Assert.Equal(revisionPayloads, await db.Set<OrderItemRevision>().Where(x => x.OrderItemId == seed.ItemId).OrderBy(x => x.RevisionNumber).Select(x => x.Snapshot).ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task ChangeWithdrawalSupportsCustomerReviewReplayAndTerminalConflict()
+    {
+        var seed = await SeedOrder(); var created = await Change(seed, seed.ExpensiveVariant, Guid.NewGuid()); using var json = JsonDocument.Parse(await created.Content.ReadAsStringAsync()); var requestId = json.RootElement.GetProperty("requestId").GetGuid(); var key = Guid.NewGuid(); var body = new { expectedVersion = (long?)null };
+        var withdrawn = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{requestId}/withdraw", body, seed.DeviceToken, key); Assert.Equal(HttpStatusCode.OK, withdrawn.StatusCode); var replay = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{requestId}/withdraw", body, seed.DeviceToken, key); using var withdrawnJson = JsonDocument.Parse(await withdrawn.Content.ReadAsStringAsync()); using var replayJson = JsonDocument.Parse(await replay.Content.ReadAsStringAsync()); Assert.Equal(withdrawnJson.RootElement.GetProperty("requestId").GetGuid(), replayJson.RootElement.GetProperty("requestId").GetGuid()); Assert.Equal(withdrawnJson.RootElement.GetProperty("status").GetString(), replayJson.RootElement.GetProperty("status").GetString()); Assert.Equal(withdrawnJson.RootElement.GetProperty("version").GetInt64(), replayJson.RootElement.GetProperty("version").GetInt64());
+        var differentPayload = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{requestId}/withdraw", new { expectedVersion = (long?)99 }, seed.DeviceToken, key); Assert.Equal(HttpStatusCode.Conflict, differentPayload.StatusCode); Assert.Equal("IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST", await fixture.ErrorCodeAsync(differentPayload)); var distinct = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{requestId}/withdraw", body, seed.DeviceToken, Guid.NewGuid()); Assert.Equal(HttpStatusCode.Conflict, distinct.StatusCode);
+        await using var db = fixture.CreateDbContext(); Assert.Equal("withdrawn", await db.Set<OrderItemRequest>().Where(x => x.Id == requestId).Select(x => x.Status).SingleAsync()); Assert.Equal(0, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId));
+    }
+
+    [Fact]
+    public async Task WithdrawalWinsKitchenDecisionAndPreventsChangeEffect()
+    {
+        var seed = await SeedOrder(initialExpensive: true, productionStatus: "in_preparation");
+        var created = await Change(seed, seed.CheapVariant, Guid.NewGuid()); created.EnsureSuccessStatusCode();
+        using var json = JsonDocument.Parse(await created.Content.ReadAsStringAsync()); var requestId = json.RootElement.GetProperty("requestId").GetGuid();
+        var withdrawal = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{requestId}/withdraw", new { expectedVersion = (long?)null }, seed.DeviceToken, Guid.NewGuid()); withdrawal.EnsureSuccessStatusCode();
+        var decision = await fixture.PostWithIdempotencyAsync($"api/v1/operations/order-item-requests/{requestId}/decide", new { decision = "approve", productionAction = "continue", reason = "withdrawn" }, seed.UserToken, Guid.NewGuid()); Assert.Equal(HttpStatusCode.Conflict, decision.StatusCode);
+        await using var db = fixture.CreateDbContext(); var events = await db.OutboxMessages.Where(x => x.EstablishmentId == seed.TenantId).ToListAsync(); Assert.Equal("withdrawn", await db.Set<OrderItemRequest>().Where(x => x.Id == requestId).Select(x => x.Status).SingleAsync()); Assert.Equal(0, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(0, await db.Set<OrderItem>().Where(x => x.Id == seed.ItemId).Select(x => x.CurrentRevisionNumber).SingleAsync()); Assert.Equal(0, events.Count(x => x.EventType == "order-item-changed.v1" && x.Payload.Contains(seed.ItemId.ToString()))); Assert.Equal(1, events.Count(x => x.EventType == "order-item-request-withdrawn.v1" && x.Payload.Contains(seed.ItemId.ToString())));
+    }
+
+    [Fact]
+    public async Task KitchenDecisionWinsWithdrawalAndWithdrawalCannotUndoChange()
+    {
+        var seed = await SeedOrder(initialExpensive: true, productionStatus: "in_preparation");
+        var created = await Change(seed, seed.CheapVariant, Guid.NewGuid()); created.EnsureSuccessStatusCode(); using var json = JsonDocument.Parse(await created.Content.ReadAsStringAsync()); var requestId = json.RootElement.GetProperty("requestId").GetGuid();
+        var decision = await fixture.PostWithIdempotencyAsync($"api/v1/operations/order-item-requests/{requestId}/decide", new { decision = "approve", productionAction = "continue", reason = "approved" }, seed.UserToken, Guid.NewGuid()); decision.EnsureSuccessStatusCode();
+        var withdrawal = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{requestId}/withdraw", new { expectedVersion = (long?)null }, seed.DeviceToken, Guid.NewGuid()); Assert.Equal(HttpStatusCode.Conflict, withdrawal.StatusCode);
+        await using var db = fixture.CreateDbContext(); var events = await db.OutboxMessages.Where(x => x.EstablishmentId == seed.TenantId).ToListAsync(); Assert.Equal("approved", await db.Set<OrderItemRequest>().Where(x => x.Id == requestId).Select(x => x.Status).SingleAsync()); Assert.Equal(1, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(1, await db.Set<OrderItem>().Where(x => x.Id == seed.ItemId).Select(x => x.CurrentRevisionNumber).SingleAsync()); Assert.Equal(1, events.Count(x => x.EventType == "order-item-changed.v1" && x.Payload.Contains(seed.ItemId.ToString()))); Assert.Equal(0, events.Count(x => x.EventType == "order-item-request-withdrawn.v1" && x.Payload.Contains(seed.ItemId.ToString())));
+    }
+
+    [Fact]
+    public async Task ConcurrentReviewConfirmationsCreateExactlyOneRevision()
+    {
+        var seed = await SeedOrder(); var created = await Change(seed, seed.ExpensiveVariant, Guid.NewGuid()); using var json = JsonDocument.Parse(await created.Content.ReadAsStringAsync()); var requestId = json.RootElement.GetProperty("requestId").GetGuid(); var body = new { requestVersion = json.RootElement.GetProperty("requestVersion").GetInt32(), reviewHash = json.RootElement.GetProperty("reviewHash").GetString(), accepted = true };
+        var responses = await fixture.ConcurrentAsync(() => fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{requestId}/confirm-review", body, seed.DeviceToken, Guid.NewGuid()), () => fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{requestId}/confirm-review", body, seed.DeviceToken, Guid.NewGuid())); Assert.Single(responses, x => x.StatusCode == HttpStatusCode.OK); Assert.Single(responses, x => x.StatusCode == HttpStatusCode.Conflict);
+        await using var db = fixture.CreateDbContext(); Assert.Equal(1, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1")); Assert.Equal(20m, await db.Set<Order>().Where(x => x.Id == seed.OrderId).Select(x => x.TotalAmount).SingleAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentIncompatibleChangeRequestsAllowOnlyOnePendingIntentAndReopenAfterWithdrawal()
+    {
+        var seed = await SeedOrder(initialExpensive: false);
+        var gate = fixture.ChangeHook.Pause("change-after-locks");
+        var a = Change(seed, seed.ExpensiveVariant, Guid.NewGuid()); await gate.Reached;
+        var b = Change(seed, seed.MidVariant, Guid.NewGuid()); gate.Release();
+        var responses = await Task.WhenAll(a, b); Assert.Single(responses, x => x.StatusCode == HttpStatusCode.Created); Assert.Single(responses, x => x.StatusCode == HttpStatusCode.Conflict);
+        var winner = responses.Single(x => x.StatusCode == HttpStatusCode.Created); var loser = responses.Single(x => x.StatusCode == HttpStatusCode.Conflict); Assert.Equal("ORDER_ITEM_REQUEST_ALREADY_PENDING", await fixture.ErrorCodeAsync(loser));
+        using var winnerJson = JsonDocument.Parse(await winner.Content.ReadAsStringAsync()); var winnerId = winnerJson.RootElement.GetProperty("requestId").GetGuid();
+        await using (var db = fixture.CreateDbContext()) { Assert.Equal(1, await db.Set<OrderItemRequest>().CountAsync(x => x.OrderItemId == seed.ItemId && new[] { "pending_customer_confirmation", "pending_operational_decision" }.Contains(x.Status))); Assert.Equal(0, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(0, await db.Set<OrderItem>().Where(x => x.Id == seed.ItemId).Select(x => x.CurrentRevisionNumber).SingleAsync()); Assert.Equal(0, await db.OutboxMessages.CountAsync(x => x.EventType == "order-item-changed.v1")); Assert.Equal(1, await db.IdempotencyRecords.CountAsync(x => x.EstablishmentId == seed.TenantId && x.OperationType == "ordering.change.create" && x.ResponseStatus == 201)); }
+        var third = await Change(seed, seed.MidVariant, Guid.NewGuid()); Assert.Equal(HttpStatusCode.Conflict, third.StatusCode); Assert.Equal("ORDER_ITEM_REQUEST_ALREADY_PENDING", await fixture.ErrorCodeAsync(third));
+        var withdrawn = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{winnerId}/withdraw", new { expectedVersion = (long?)null }, seed.DeviceToken, Guid.NewGuid()); withdrawn.EnsureSuccessStatusCode();
+        var reopened = await Change(seed, seed.MidVariant, Guid.NewGuid()); reopened.EnsureSuccessStatusCode();
+        await using var finalDb = fixture.CreateDbContext(); Assert.Equal(1, await finalDb.Set<OrderItemRequest>().CountAsync(x => x.OrderItemId == seed.ItemId && x.Status == "withdrawn")); Assert.Equal(1, await finalDb.Set<OrderItemRequest>().CountAsync(x => x.OrderItemId == seed.ItemId && x.Status == "pending_customer_confirmation")); Assert.Equal(0, await finalDb.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId));
+    }
+
+    [Fact]
+    public async Task RevokeWinsChangeAfterInitialAuthentication()
+    {
+        var seed = await SeedOrder(initialExpensive: true); var deviceId = await DeviceId(seed); var gate = fixture.ChangeHook.Pause("change-before-locks"); var changeTask = Change(seed, seed.CheapVariant, Guid.NewGuid()); await gate.Reached;
+        (await fixture.PostAsync($"api/v1/operations/table-devices/{deviceId}/revoke-configuration", null, seed.UserToken)).EnsureSuccessStatusCode(); gate.Release(); var change = await changeTask; Assert.Equal(HttpStatusCode.Forbidden, change.StatusCode); Assert.Equal("DEVICE_CREDENTIAL_REVOKED", await fixture.ErrorCodeAsync(change));
+        await using var db = fixture.CreateDbContext(); Assert.Equal(0, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(0, await db.Set<OrderItem>().Where(x => x.Id == seed.ItemId).Select(x => x.CurrentRevisionNumber).SingleAsync()); Assert.Equal(0, await db.OutboxMessages.CountAsync(x => x.EventType == "order-item-changed.v1")); Assert.Equal("revoked", await db.Set<Appizza.Modules.Devices.Device>().Where(x => x.Id == deviceId).Select(x => x.Status).SingleAsync());
+    }
+
+    [Fact]
+    public async Task ChangeWinsRevokeAndReplayKeepsRevision()
+    {
+        var seed = await SeedOrder(initialExpensive: true); var deviceId = await DeviceId(seed); var key = Guid.NewGuid(); var gate = fixture.ChangeHook.Pause("change-after-locks"); var changeTask = Change(seed, seed.CheapVariant, key); await gate.Reached; gate.Release(); var change = await changeTask; change.EnsureSuccessStatusCode(); (await fixture.PostAsync($"api/v1/operations/table-devices/{deviceId}/revoke-configuration", null, seed.UserToken)).EnsureSuccessStatusCode(); var replay = await Change(seed, seed.MidVariant, key); Assert.Equal(HttpStatusCode.Forbidden, replay.StatusCode); Assert.Equal("DEVICE_CREDENTIAL_REVOKED", await fixture.ErrorCodeAsync(replay));
+        await using var db = fixture.CreateDbContext(); var revisions = await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId); var current = await db.Set<OrderItem>().Where(x => x.Id == seed.ItemId).Select(x => x.CurrentRevisionNumber).SingleAsync(); var changedEvents = await db.OutboxMessages.CountAsync(x => x.EstablishmentId == seed.TenantId && x.EventType == "order-item-changed.v1"); var deviceStatus = await db.Set<Appizza.Modules.Devices.Device>().Where(x => x.Id == deviceId).Select(x => x.Status).SingleAsync(); Assert.Equal(1, revisions); Assert.Equal(1, current); Assert.Equal(1, changedEvents); Assert.Equal("revoked", deviceStatus);
+    }
+
+    [Fact]
+    public async Task BlockWinsChangeAfterInitialAuthentication()
+    {
+        var seed = await SeedOrder(initialExpensive: true); var deviceId = await DeviceId(seed); var gate = fixture.ChangeHook.Pause("change-before-locks"); var changeTask = Change(seed, seed.CheapVariant, Guid.NewGuid()); await gate.Reached;
+        (await fixture.PostAsync($"api/v1/operations/table-devices/{deviceId}/block", null, seed.UserToken)).EnsureSuccessStatusCode(); gate.Release(); var change = await changeTask; Assert.Equal(HttpStatusCode.Forbidden, change.StatusCode); Assert.Equal("DEVICE_BLOCKED", await fixture.ErrorCodeAsync(change));
+        await using var db = fixture.CreateDbContext(); Assert.Equal(0, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(0, await db.OutboxMessages.CountAsync(x => x.EventType == "order-item-changed.v1")); Assert.Equal("blocked", await db.Set<Appizza.Modules.Devices.Device>().Where(x => x.Id == deviceId).Select(x => x.Status).SingleAsync());
+    }
+
+    [Fact]
+    public async Task ChangeWinsBlockAndRevisionRemainsValid()
+    {
+        var seed = await SeedOrder(initialExpensive: true); var deviceId = await DeviceId(seed); var gate = fixture.ChangeHook.Pause("change-after-locks"); var changeTask = Change(seed, seed.CheapVariant, Guid.NewGuid()); await gate.Reached; gate.Release(); var change = await changeTask; change.EnsureSuccessStatusCode(); (await fixture.PostAsync($"api/v1/operations/table-devices/{deviceId}/block", null, seed.UserToken)).EnsureSuccessStatusCode();
+        await using var db = fixture.CreateDbContext(); Assert.Equal(1, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(1, await db.Set<OrderItem>().Where(x => x.Id == seed.ItemId).Select(x => x.CurrentRevisionNumber).SingleAsync()); Assert.Equal(1, await db.OutboxMessages.CountAsync(x => x.EventType == "order-item-changed.v1")); Assert.Equal("blocked", await db.Set<Appizza.Modules.Devices.Device>().Where(x => x.Id == deviceId).Select(x => x.Status).SingleAsync());
+    }
+
+    private async Task<Guid> DeviceId(Seed seed)
+    {
+        await using var db = fixture.CreateDbContext(); return await db.Set<Appizza.Modules.Devices.DeviceTableBinding>().Where(x => x.DiningTableId == db.Set<Appizza.Modules.Tables.TableSession>().Where(s => s.Id == seed.SessionId).Select(s => s.DiningTableId).Single()).Select(x => x.DeviceId).SingleAsync();
+    }
+
+    [Fact]
+    public async Task ConcurrentChangesOnTwoItemsSameOrderPreserveBothDeltas()
+    {
+        var seed = await SeedOrder(initialExpensive: true); await using var setup = fixture.CreateDbContext(); var original = await setup.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); var second = new OrderItem { Id = Guid.NewGuid(), OrderId = seed.OrderId, LocalCartItemId = Guid.NewGuid(), ProductId = original.ProductId, ProductType = original.ProductType, ConfigurationVersion = original.ConfigurationVersion, CatalogRevisionId = original.CatalogRevisionId, CatalogVersion = original.CatalogVersion, AvailabilityVersion = original.AvailabilityVersion, ProductVariantId = original.ProductVariantId, ProductName = original.ProductName, VariantName = original.VariantName, Quantity = 1, UnitAmount = 12.50m, TotalAmount = 12.50m, Snapshot = original.Snapshot, CommercialStatus = "submitted", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }; setup.Add(second); var order = await setup.Set<Order>().SingleAsync(x => x.Id == seed.OrderId); order.SubtotalAmount += 12.50m; order.TotalAmount += 12.50m; var session = await setup.Set<Appizza.Modules.Tables.TableSession>().SingleAsync(x => x.Id == seed.SessionId); session.SubtotalAmount += 12.50m; session.TotalAmount += 12.50m; await setup.SaveChangesAsync();
+        var results = await fixture.ConcurrentAsync(() => Change(seed, seed.CheapVariant, Guid.NewGuid()), () => Change(seed with { ItemId = second.Id }, seed.ExpensiveVariant, Guid.NewGuid())); Assert.All(results, x => x.EnsureSuccessStatusCode()); await using var db = fixture.CreateDbContext(); Assert.Equal(2, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId || x.OrderItemId == second.Id)); Assert.Equal(25m, await db.Set<Order>().Where(x => x.Id == seed.OrderId).Select(x => x.TotalAmount).SingleAsync()); Assert.Equal(25m, await db.Set<Appizza.Modules.Tables.TableSession>().Where(x => x.Id == seed.SessionId).Select(x => x.TotalAmount).SingleAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentChangesOnDifferentOrdersSameSessionPreserveBothDeltas()
+    {
+        var seed = await SeedOrder(initialExpensive: true); await using var setup = fixture.CreateDbContext(); var original = await setup.Set<OrderItem>().SingleAsync(x => x.Id == seed.ItemId); var order2 = new Order { Id = Guid.NewGuid(), EstablishmentId = seed.TenantId, TableSessionId = seed.SessionId, Status = "submitted", SubtotalAmount = 12.50m, TotalAmount = 12.50m, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }; var item2 = new OrderItem { Id = Guid.NewGuid(), OrderId = order2.Id, LocalCartItemId = Guid.NewGuid(), ProductId = original.ProductId, ProductType = original.ProductType, ConfigurationVersion = original.ConfigurationVersion, CatalogRevisionId = original.CatalogRevisionId, CatalogVersion = original.CatalogVersion, AvailabilityVersion = original.AvailabilityVersion, ProductVariantId = original.ProductVariantId, ProductName = original.ProductName, VariantName = original.VariantName, Quantity = 1, UnitAmount = 12.50m, TotalAmount = 12.50m, Snapshot = original.Snapshot, CommercialStatus = "submitted", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }; setup.Add(order2); setup.Add(item2); var session = await setup.Set<Appizza.Modules.Tables.TableSession>().SingleAsync(x => x.Id == seed.SessionId); session.SubtotalAmount += 12.50m; session.TotalAmount += 12.50m; await setup.SaveChangesAsync();
+        var results = await fixture.ConcurrentAsync(() => Change(seed, seed.CheapVariant, Guid.NewGuid()), () => Change(seed with { OrderId = order2.Id, ItemId = item2.Id }, seed.ExpensiveVariant, Guid.NewGuid())); Assert.All(results, x => x.EnsureSuccessStatusCode()); await using var db = fixture.CreateDbContext(); Assert.Equal(1, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == seed.ItemId)); Assert.Equal(1, await db.Set<OrderItemRevision>().CountAsync(x => x.OrderItemId == item2.Id)); Assert.Equal(20m, await db.Set<Order>().Where(x => x.Id == seed.OrderId).Select(x => x.TotalAmount).SingleAsync()); Assert.Equal(20m, await db.Set<Order>().Where(x => x.Id == order2.Id).Select(x => x.TotalAmount).SingleAsync()); Assert.Equal(40m, await db.Set<Appizza.Modules.Tables.TableSession>().Where(x => x.Id == seed.SessionId).Select(x => x.TotalAmount).SingleAsync());
+    }
+
+    private async Task CompleteChange(Seed seed, Guid variant)
+    {
+        var response = await Change(seed, variant, Guid.NewGuid()); response.EnsureSuccessStatusCode(); using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()); if (json.RootElement.GetProperty("status").GetString() != "pending_customer_confirmation") return; var confirmed = await fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-item-requests/{json.RootElement.GetProperty("requestId").GetGuid()}/confirm-review", new { requestVersion = json.RootElement.GetProperty("requestVersion").GetInt32(), reviewHash = json.RootElement.GetProperty("reviewHash").GetString(), accepted = true }, seed.DeviceToken, Guid.NewGuid()); confirmed.EnsureSuccessStatusCode();
+    }
+
+    private Task<HttpResponseMessage> Change(Seed seed, Guid variant, Guid key) => fixture.PostWithIdempotencyAsync($"api/v1/table-device/order-items/{seed.ItemId}/change-requests", new { configuration = new { productVariantId = variant }, reasonCode = "CUSTOMER_CHANGE", expectedOrderItemVersion = (long?)null }, seed.DeviceToken, key);
+
+    private async Task EnsureProduction(Seed seed, string status)
+    {
+        await using var db = fixture.CreateDbContext(); var stationId = await db.Set<Appizza.Modules.Kitchen.Station>().Where(x => x.EstablishmentId == seed.TenantId && x.IsDefault).Select(x => x.Id).FirstAsync(); var now = DateTimeOffset.UtcNow; db.Add(new Appizza.Modules.Kitchen.ProductionItem { Id = Guid.NewGuid(), EstablishmentId = seed.TenantId, OrderItemId = seed.ItemId, StationId = stationId, Status = status, ReceivedAt = now, CreatedAt = now, UpdatedAt = now }); await db.SaveChangesAsync();
+    }
+
+    private async Task<Guid> ProductionId(Seed seed)
+    {
+        await using var db = fixture.CreateDbContext(); return await db.Set<Appizza.Modules.Kitchen.ProductionItem>().Where(x => x.OrderItemId == seed.ItemId).Select(x => x.Id).SingleAsync();
+    }
+
+    private async Task<Seed> SeedOrder(bool initialExpensive = false, string? productionStatus = null)
+    {
+        var tenant = await fixture.CreateTenantAsync(2, 1); var productResponse = await fixture.PostAsync("api/v1/operations/catalog/products", new { productType = "simple", name = "Suco", internalCode = Guid.NewGuid().ToString("N"), displayOrder = 1, requiresProduction = false, allowsNotes = true, maximumNoteLength = 120 }, tenant.AccessToken); productResponse.EnsureSuccessStatusCode(); using var productJson = JsonDocument.Parse(await productResponse.Content.ReadAsStringAsync()); var product = productJson.RootElement.GetProperty("id").GetGuid();
+        async Task<Guid> Variant(string name, decimal price) { var response = await fixture.PostAsync($"api/v1/operations/catalog/products/{product}/variants", new { name, internalCode = Guid.NewGuid().ToString("N"), basePrice = price, displayOrder = 1 }, tenant.AccessToken); response.EnsureSuccessStatusCode(); using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()); return json.RootElement.GetProperty("id").GetGuid(); }
+        var cheap = await Variant("Barato", 12.50m); var mid = await Variant("MÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â©dio", 15m); var expensive = await Variant("Caro", 20m); (await fixture.PostAsync("api/v1/operations/catalog/publish", null, tenant.AccessToken, true)).EnsureSuccessStatusCode(); var stationId = Guid.NewGuid(); await using (var stationDb = fixture.CreateDbContext()) { stationDb.Add(new Appizza.Modules.Kitchen.Station { Id = stationId, EstablishmentId = tenant.EstablishmentId, Name = "Cozinha", IsDefault = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }); await stationDb.SaveChangesAsync(); } var device = await fixture.RegisterAndBindAsync(tenant.AccessToken, tenant.TableIds[0]); var session = await fixture.OpenSessionAsync(device.AccessToken); var selected = initialExpensive ? expensive : cheap; using var detail = await fixture.GetJsonAsync($"api/v1/table-device/menu/products/{product}", device.AccessToken); var version = detail.RootElement.GetProperty("configurationVersion").GetString()!; var localCart = Guid.NewGuid(); var simulation = await fixture.PostAsync("api/v1/table-device/cart/simulate", new { sessionId = session, localCartId = localCart, catalogVersion = 1, availabilityVersion = 0, items = new[] { new { localCartItemId = Guid.NewGuid(), productId = product, productVariantId = selected, quantity = 1, configurationVersion = version, configuration = new { productVariantId = selected } } } }, device.AccessToken); simulation.EnsureSuccessStatusCode(); using var sim = JsonDocument.Parse(await simulation.Content.ReadAsStringAsync()); var submission = await fixture.PostWithIdempotencyAsync("api/v1/table-device/orders", new { sessionId = session, localCartId = localCart, clientSubmissionId = Guid.NewGuid(), simulationId = sim.RootElement.GetProperty("simulationId").GetGuid(), simulationVersion = sim.RootElement.GetProperty("simulationVersion").GetString(), acceptedReview = sim.RootElement.GetProperty("requiresReview").GetBoolean() }, device.AccessToken, Guid.NewGuid()); submission.EnsureSuccessStatusCode(); using var submitted = JsonDocument.Parse(await submission.Content.ReadAsStringAsync()); var orderId = submitted.RootElement.GetProperty("order").GetProperty("id").GetGuid(); await using var db = fixture.CreateDbContext(); var item = await db.Set<OrderItem>().SingleAsync(x => x.OrderId == orderId); if (productionStatus is not null) { var productionId = Guid.NewGuid(); db.Add(new Appizza.Modules.Kitchen.ProductionItem { Id = productionId, EstablishmentId = tenant.EstablishmentId, OrderItemId = item.Id, StationId = stationId, Status = productionStatus, ReceivedAt = DateTimeOffset.UtcNow, PreparationStartedAt = productionStatus == "in_preparation" ? DateTimeOffset.UtcNow : null, ReadyAt = productionStatus == "ready" ? DateTimeOffset.UtcNow : null, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }); if (productionStatus == "in_preparation") db.Add(new Appizza.Modules.Kitchen.ProductionAttempt { Id = Guid.NewGuid(), ProductionItemId = productionId, AttemptNumber = 1, Status = "active", StartedAt = DateTimeOffset.UtcNow, CreatedAt = DateTimeOffset.UtcNow }); await db.SaveChangesAsync(); } return new(tenant.EstablishmentId, tenant.AccessToken, device.AccessToken, session, orderId, item.Id, item.Snapshot, cheap, mid, expensive);
+    }
+
+    private sealed record Seed(Guid TenantId, string UserToken, string DeviceToken, Guid SessionId, Guid OrderId, Guid ItemId, string Snapshot, Guid CheapVariant, Guid MidVariant, Guid ExpensiveVariant);
+}

@@ -23,6 +23,8 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<DiningTable> DiningTables => Set<DiningTable>();
     public DbSet<TableSession> TableSessions => Set<TableSession>();
+    public DbSet<DeliveryConfirmation> DeliveryConfirmations => Set<DeliveryConfirmation>();
+    public DbSet<DeliveryContest> DeliveryContests => Set<DeliveryContest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -68,6 +70,9 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
         modelBuilder.Entity<TableSession>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<TableSession>().HasOne<DiningTable>().WithMany().HasForeignKey(x => x.DiningTableId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<SessionCustomerIdentification>().HasOne<TableSession>().WithMany().HasForeignKey(x => x.TableSessionId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<DeliveryConfirmation>().HasOne<ProductionItem>().WithMany().HasForeignKey(x => x.ProductionItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<DeliveryContest>().HasOne<DeliveryConfirmation>().WithMany().HasForeignKey(x => x.DeliveryConfirmationId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<DeliveryContest>().HasOne<ProductionItem>().WithMany().HasForeignKey(x => x.ProductionItemId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<TableSessionStatusHistory>().HasOne<TableSession>().WithMany().HasForeignKey(x => x.TableSessionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Category>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Category>().HasOne<Category>().WithMany().HasForeignKey(x => x.ParentCategoryId).OnDelete(DeleteBehavior.Restrict);
@@ -141,11 +146,21 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
         modelBuilder.Entity<OrderItemPizzaConfiguration>().HasOne<OrderItem>().WithOne().HasForeignKey<OrderItemPizzaConfiguration>(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<OrderItemPizzaFraction>().HasOne<OrderItem>().WithMany().HasForeignKey(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<OrderItemComboSelection>().HasOne<OrderItem>().WithMany().HasForeignKey(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemRequest>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemRequest>().HasOne<Order>().WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemRequest>().HasOne<OrderItem>().WithMany().HasForeignKey(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemRevision>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemRevision>().HasOne<OrderItem>().WithMany().HasForeignKey(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderItemRevision>().HasOne<OrderItemRequest>().WithOne().HasForeignKey<OrderItemRevision>(x => x.SourceRequestId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<OrderStatusHistory>().HasOne<Order>().WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Station>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionItem>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionItem>().HasOne<Station>().WithMany().HasForeignKey(x => x.StationId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionItem>().HasOne<OrderItem>().WithOne().HasForeignKey<ProductionItem>(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionStatusHistory>().HasOne<ProductionItem>().WithMany().HasForeignKey(x => x.ProductionItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionAttempt>().HasOne<ProductionItem>().WithMany().HasForeignKey(x => x.ProductionItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionPause>().HasOne<ProductionItem>().WithMany().HasForeignKey(x => x.ProductionItemId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<ProductionPause>().HasOne<ProductionAttempt>().WithMany().HasForeignKey(x => x.ProductionAttemptId).OnDelete(DeleteBehavior.Restrict);
     }
 
     private static void ApplySnakeCaseNames(ModelBuilder modelBuilder)

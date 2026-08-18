@@ -12,8 +12,11 @@ var connectionString = builder.Configuration.GetConnectionString("Appizza")
 builder.Services.AddDbContext<AppizzaDbContext>(options =>
     options.UseNpgsql(connectionString, npgsql =>
         npgsql.MigrationsHistoryTable("__ef_migrations_history", "integration")));
+builder.Services.AddSingleton<Phase5DeliveryConcurrencyHook>();
+builder.Services.AddSingleton<IPhase5DeliveryConcurrencyHook>(p => p.GetRequiredService<Phase5DeliveryConcurrencyHook>());
 builder.Services.AddHostedService<OutboxMonitorWorker>();
 builder.Services.AddHostedService<ExpiredCpfCleanupWorker>();
+builder.Services.AddHostedService<DeliveryAutoConfirmationHostedWorker>();
 
 var otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
 builder.Services.AddOpenTelemetry()

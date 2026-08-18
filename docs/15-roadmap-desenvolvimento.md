@@ -149,3 +149,35 @@ Entregáveis:
 Não pertencem à Fase 4: cancelamento ou alteração de pedido, rejeição da cozinha, preparo,
 pausa, restart, Ready, entrega, contestação, fechamento de sessão, Promotions, Payments, Delivery
 ou qualquer funcionalidade da Fase 5 ou posterior.
+
+## Fase 5 — Status + requests + Delivery
+
+Status: **Fase 5 — concluída e formalmente validada.** Delivery implementado end-to-end no backend, Operations e Table Device.
+
+Objetivo: completar o lifecycle operacional iniciado na Fase 4, expor status público determinístico,
+processar solicitações de cancelamento/alteração de item com histórico imutável e concluir a entrega
+com confirmação e contestação auditáveis.
+
+Escopo: lifecycle/rejeição de `ProductionItem`; status público; requests exclusivamente de cancelamento
+integral e alteração de `OrderItem`; `OrderItemRevision` append-only; consequência comercial idempotente
+de rejeição Kitchen; confirmação/auto-confirmação/contestação de entrega; UX Table e Operations.
+
+Fora do escopo: service requests, chamar garçom, `operations.occurrence`, cancelamento parcial por
+quantidade, Promotions, Payments, Closing, prioridade/reordenação, scope por estação e UI administrativa.
+
+Checkpoints: **A — Documentação e decisões: concluído**; **B — Production Lifecycle: concluído e
+validado**; **C — Order Status Read Model: concluído e validado**; **D — Cancellation Requests:
+concluído e validado**; **E — Change Requests: concluído e validado**; **F — Delivery: concluído e validado**;
+**G — Appizza.Table: concluído e validado**; **H — Appizza.Operations: concluído e validado**;
+**I — Auditoria final: concluída e validada**.
+
+Migrations criadas: `Phase5_KitchenProduction` (Checkpoint B) e `Phase5_OrderingRequests`
+(Checkpoint D, infraestrutura de requests/cancellation). Migration incremental autorizada para o
+Checkpoint E: `Phase5_OrderItemRevisions` (criada e validada). Migration criada e validada para o Checkpoint F:
+`Phase5_Delivery`.
+`Phase4_OrderingKitchen` não será editada.
+
+Evidência final do encerramento: API/Testcontainers 250/250; Delivery E2E 4/4;
+Unit 85/85; Infrastructure 4/4; Architecture 2/2; Operations frontend 10/10;
+builds e validações de backend, Table Device, realtime, Outbox/Inbox e
+reconciliação aprovados. Não há bug funcional aberto.

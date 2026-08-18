@@ -20,6 +20,7 @@ public sealed class MenuPage : ContentPage
         while (_content.Count > 1) _content.RemoveAt(1);
         foreach (var category in menu.Categories) { _content.Add(new Label { Text = category.Name, FontSize = 24, FontAttributes = FontAttributes.Bold, Margin = new Thickness(0, 16, 0, 4) }); foreach (var product in category.Products) { var button = new Button { Text = $"{product.Name}{(product.StartingPrice is decimal price ? $" · a partir de R$ {price:N2}" : "")}{(!product.Available ? " · INDISPONÍVEL" : "")}", IsEnabled = product.Available }; button.Clicked += async (_, _) => { TableRuntime.SelectedProduct = product; await Shell.Current.GoToAsync(nameof(ProductConfigurationPage)); }; _content.Add(button); } }
         var cart = new Button { Text = "Ver carrinho" }; cart.Clicked += async (_, _) => await Shell.Current.GoToAsync(nameof(CartPage)); _content.Add(cart);
+        var delivery = new Button { Text = "Acompanhar pedidos" }; delivery.Clicked += async (_, _) => await Shell.Current.GoToAsync(nameof(DeliveryPage)); _content.Add(delivery);
     }
     private void AddRetry() { if (_content.Count > 1) return; var retry = new Button { Text = "Tentar novamente" }; retry.Clicked += async (_, _) => await LoadAsync(); _content.Add(retry); }
 }

@@ -17,5 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\BuildingBlocks\Appizza.Persistence\Appizza.Persistence.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Kitchen\Appizza.Modules.Kitchen.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Establishments\Appizza.Modules.Establishments.csproj" />
   </ItemGroup>
 </Project>

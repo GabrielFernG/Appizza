@@ -9,9 +9,16 @@
 *.user
 *.suo
 TestResults/
+.recovery/
 coverage/
 src/Web/Appizza.Operations/node_modules/
 src/Web/Appizza.Operations/dist/
 *.db
 *.db-shm
 *.db-wal
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+*.dmp

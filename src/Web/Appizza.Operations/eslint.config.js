@@ -9,6 +9,10 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
   {
+    files: ['**/*.vue'],
+    languageOptions: { parser: pluginVue.parser, parserOptions: { parser: tseslint.parser } },
+  },
+  {
     languageOptions: {
       globals: globals.browser,
     },

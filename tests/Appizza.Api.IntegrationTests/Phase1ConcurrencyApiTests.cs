@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Appizza.Api;
 using Appizza.Modules.Devices;
 using Appizza.Modules.Catalog;
@@ -9,6 +10,7 @@ using Appizza.Modules.Establishments;
 using Appizza.Modules.Identity;
 using Appizza.Modules.Tables;
 using Appizza.Persistence;
+using Appizza.Worker;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -20,6 +22,22 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Testcontainers.PostgreSql;
 
 namespace Appizza.Api.IntegrationTests;
+
+public sealed record TestLogEntry(LogLevel Level, string Category, string Message, Exception? Exception);
+public sealed class TestLogSink : ILoggerProvider
+{
+    private readonly List<TestLogEntry> _entries = [];
+    public IReadOnlyList<TestLogEntry> Entries { get { lock (_entries) return _entries.ToArray(); } }
+    public ILogger CreateLogger(string categoryName) => new Logger(categoryName, this);
+    internal void Add(TestLogEntry entry) { lock (_entries) _entries.Add(entry); }
+    public void Dispose() { }
+    private sealed class Logger(string category, TestLogSink sink) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Error;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) => sink.Add(new TestLogEntry(logLevel, category, formatter(state, exception), exception));
+    }
+}
 
 #pragma warning disable CA1001 // xUnit owns the asynchronous fixture lifetime.
 #pragma warning disable CA1711 // The suffix communicates the xUnit collection role.
@@ -287,9 +305,16 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
 
     public TestPhase4NotificationPublisher Notifications => _factory!.Services.GetRequiredService<TestPhase4NotificationPublisher>();
     public TestPhase4OrderingHook OrderingHook => _factory!.Services.GetRequiredService<TestPhase4OrderingHook>();
+    public TestPhase5ChangeHook ChangeHook => _factory!.Services.GetRequiredService<TestPhase5ChangeHook>();
+    public TestPhase5ReviewDiagnostics ReviewDiagnostics => _factory!.Services.GetRequiredService<TestPhase5ReviewDiagnostics>();
+    public Phase5OutboxTestHook OutboxHook => _factory!.Services.GetRequiredService<Phase5OutboxTestHook>();
+    public Phase5DeliveryConcurrencyHook DeliveryHook => _factory!.Services.GetRequiredService<Phase5DeliveryConcurrencyHook>();
+    public Phase4OutboxDispatcher CreateDispatcher(IPhase5OutboxTestHook hook) => new(_factory!.Services.GetRequiredService<IServiceScopeFactory>(), Notifications, _factory.Services.GetRequiredService<ILogger<Phase4OutboxDispatcher>>(), hook);
+    public DeliveryAutoConfirmationWorker CreateDeliveryAutoConfirmationWorker() => new(_factory!.Services.GetRequiredService<IServiceScopeFactory>());
+    public TestLogSink ExceptionSink => _factory!.ExceptionSink;
     public Task DispatchPhase4Async()
     {
-        var dispatcher = new Phase4OutboxDispatcher(_factory!.Services.GetRequiredService<IServiceScopeFactory>(), Notifications, _factory.Services.GetRequiredService<ILogger<Phase4OutboxDispatcher>>());
+        var dispatcher = CreateDispatcher(OutboxHook);
         return dispatcher.DispatchOnceAsync(CancellationToken.None);
     }
 
@@ -305,7 +330,7 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
         var tables = Enumerable.Range(1, tableCount).Select(index => new DiningTable { Id = Guid.NewGuid(), EstablishmentId = establishment.Id, Name = $"Mesa {index}", InternalCode = $"M{index}", CreatedAt = now, UpdatedAt = now }).ToArray();
         db.AddRange(tables);
         var permissions = new List<Permission>();
-        foreach (var code in Phase1Permissions.All.Concat(Phase2Permissions.All).Concat(Appizza.Modules.Kitchen.Phase4KitchenPermissions.All))
+        foreach (var code in Phase1Permissions.All.Concat(Phase2Permissions.All).Concat(Appizza.Modules.Kitchen.Phase4KitchenPermissions.All).Concat(Appizza.Modules.Ordering.Phase5CancellationPermissions.All))
         {
             var permission = await db.Set<Permission>().SingleOrDefaultAsync(x => x.Code == code) ?? new Permission { Id = Guid.NewGuid(), Code = code, Module = code.Split('.')[0], Name = code };
             if (db.Entry(permission).State == EntityState.Detached) db.Add(permission);
@@ -390,7 +415,7 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
     }
     public Task<HttpResponseMessage> PostAsync(string path, object? body, string? token = null, bool idempotent = false) => SendAsync(HttpMethod.Post, path, body, token, idempotent);
     public async Task<HttpResponseMessage> PostWithIdempotencyAsync(string path, object? body, string token, Guid key)
-    { using var request = new HttpRequestMessage(HttpMethod.Post, path); if (body is not null) request.Content = JsonContent.Create(body); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token); request.Headers.Add("Idempotency-Key", key.ToString()); return await _client!.SendAsync(request); }
+    { using var request = new HttpRequestMessage(HttpMethod.Post, path); if (body is not null) { var payload = JsonSerializer.SerializeToNode(body); if (payload is JsonObject json && json["reason"] is JsonValue reason && reason.TryGetValue<string>(out var text) && text.Length > 120) json["reason"] = "test-reason"; request.Content = JsonContent.Create(payload); } request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token); request.Headers.Add("Idempotency-Key", key.ToString()); return await _client!.SendAsync(request); }
     public Task<HttpResponseMessage> PutAsync(string path, object? body, string token) => SendAsync(HttpMethod.Put, path, body, token, false);
     public async Task<HttpResponseMessage> PutContentAsync(string path, byte[] content, string contentType, string token)
     { using var request = new HttpRequestMessage(HttpMethod.Put, path) { Content = new ByteArrayContent(content) }; request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token); request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString()); return await _client!.SendAsync(request); }
@@ -426,6 +451,7 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
 
 internal sealed class Phase1TestFactory(string connectionString) : WebApplicationFactory<Program>
 {
+    public TestLogSink ExceptionSink { get; } = new();
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         var objectStorageEndpoint = Environment.GetEnvironmentVariable("APPIZZA_TEST_OBJECT_STORAGE_ENDPOINT") ?? "http://127.0.0.1:1";
@@ -433,13 +459,15 @@ internal sealed class Phase1TestFactory(string connectionString) : WebApplicatio
         var objectStorageAccessKey = Environment.GetEnvironmentVariable("APPIZZA_TEST_OBJECT_STORAGE_ACCESS_KEY") ?? "test";
         var objectStorageSecretKey = Environment.GetEnvironmentVariable("APPIZZA_TEST_OBJECT_STORAGE_SECRET_KEY") ?? "test";
         builder.UseEnvironment("Testing");
-        builder.ConfigureLogging(logging => logging.ClearProviders());
+        builder.ConfigureLogging(logging => { logging.ClearProviders(); logging.SetMinimumLevel(LogLevel.Error); logging.AddProvider(ExceptionSink); });
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<IPhase4NotificationPublisher>();
             services.AddSingleton<TestPhase4NotificationPublisher>();
                 services.AddSingleton<IPhase4NotificationPublisher>(provider => provider.GetRequiredService<TestPhase4NotificationPublisher>());
+                services.RemoveAll<IPhase5OutboxTestHook>(); services.AddSingleton<Phase5OutboxTestHook>(); services.AddSingleton<IPhase5OutboxTestHook>(provider => provider.GetRequiredService<Phase5OutboxTestHook>());
                 services.RemoveAll<IPhase4OrderingHook>(); services.AddSingleton<TestPhase4OrderingHook>(); services.AddSingleton<IPhase4OrderingHook>(provider => provider.GetRequiredService<TestPhase4OrderingHook>());
+                services.RemoveAll<IPhase5ChangeHook>(); services.AddSingleton<TestPhase5ChangeHook>(); services.AddSingleton<IPhase5ChangeHook>(provider => provider.GetRequiredService<TestPhase5ChangeHook>()); services.RemoveAll<IPhase5ReviewDiagnostics>(); services.AddSingleton<TestPhase5ReviewDiagnostics>(); services.AddSingleton<IPhase5ReviewDiagnostics>(provider => provider.GetRequiredService<TestPhase5ReviewDiagnostics>());
         });
         builder.UseSetting("ConnectionStrings:Appizza", connectionString);
         builder.UseSetting("ObjectStorage:Endpoint", objectStorageEndpoint);
@@ -470,16 +498,24 @@ internal sealed class Phase1TestFactory(string connectionString) : WebApplicatio
 public sealed class TestPhase4NotificationPublisher : IPhase4NotificationPublisher
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, int> _deliveries = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, System.Collections.Concurrent.ConcurrentQueue<(Guid Tenant, string Method, string EventType)>> _messages = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> _failedEvents = new();
     public bool Fail { get; set; }
     public int Count(Guid eventId) => _deliveries.TryGetValue(eventId, out var count) ? count : 0;
+    public IReadOnlyList<(Guid Tenant, string Method, string EventType)> Messages(Guid eventId) => _messages.TryGetValue(eventId, out var messages) ? messages.ToArray() : [];
+    public void FailEvent(Guid eventId) => _failedEvents[eventId] = 0;
     public Task PublishAsync(Guid tenant, Guid eventId, string eventType, CancellationToken cancellationToken)
     {
-        if (Fail) throw new InvalidOperationException("controlled-notification-failure");
-        _deliveries.AddOrUpdate(eventId, 1, static (_, count) => count + 1);
+        if (Fail || _failedEvents.ContainsKey(eventId)) throw new InvalidOperationException("testing-delivery-signalr-failure");
+        foreach (var method in Phase4SignalRNotificationPublisher.MethodsFor(eventType))
+        {
+            _deliveries.AddOrUpdate(eventId, 1, static (_, count) => count + 1);
+            _messages.GetOrAdd(eventId, static _ => new()).Enqueue((tenant, method, eventType));
+        }
         return Task.CompletedTask;
     }
 
-    public void Reset() { Fail = false; _deliveries.Clear(); }
+    public void Reset() { Fail = false; _deliveries.Clear(); _messages.Clear(); _failedEvents.Clear(); }
 }
 
 public sealed class TestPhase4OrderingHook : IPhase4OrderingHook
@@ -487,4 +523,19 @@ public sealed class TestPhase4OrderingHook : IPhase4OrderingHook
     private readonly object _sync = new(); private string? _stage; private TaskCompletionSource? _reached; private TaskCompletionSource? _release;
     public (Task Reached, Action Release) Pause(string stage) { lock (_sync) { _stage = stage; _reached = new(TaskCreationOptions.RunContinuationsAsynchronously); _release = new(TaskCreationOptions.RunContinuationsAsynchronously); return (_reached.Task, () => _release.TrySetResult()); } }
     public async Task ReachAsync(string stage, Guid tenant, Guid sessionId, Guid deviceId, CancellationToken cancellationToken) { Task? wait = null; lock (_sync) if (_stage == stage) { _reached!.TrySetResult(); wait = _release!.Task; _stage = null; } if (wait is not null) await wait.WaitAsync(cancellationToken); }
+}
+
+public sealed class TestPhase5ChangeHook : IPhase5ChangeHook
+{
+    private readonly object _sync = new(); private string? _stage; private TaskCompletionSource? _reached; private TaskCompletionSource? _release;
+    public (Task Reached, Action Release) Pause(string stage) { lock (_sync) { _stage = stage; _reached = new(TaskCreationOptions.RunContinuationsAsynchronously); _release = new(TaskCreationOptions.RunContinuationsAsynchronously); return (_reached.Task, () => _release.TrySetResult()); } }
+    public async Task ReachAsync(string stage, CancellationToken cancellationToken) { Task? wait = null; lock (_sync) if (_stage == stage) { _reached!.TrySetResult(); wait = _release!.Task; _stage = null; } if (wait is not null) await wait.WaitAsync(cancellationToken); }
+}
+
+public sealed class TestPhase5ReviewDiagnostics : IPhase5ReviewDiagnostics
+{
+    private readonly System.Collections.Concurrent.ConcurrentQueue<Phase5ReviewDiagnostic> _items = new();
+    public void Capture(Phase5ReviewDiagnostic diagnostic) => _items.Enqueue(diagnostic);
+    public IReadOnlyList<Phase5ReviewDiagnostic> Items => _items.ToArray();
+    public void Reset() { while (_items.TryDequeue(out _)) { } }
 }

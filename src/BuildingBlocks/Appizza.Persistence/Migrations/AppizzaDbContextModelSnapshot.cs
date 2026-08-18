@@ -2817,6 +2817,261 @@ namespace Appizza.Persistence.Migrations
                     b.ToTable("user_session", "identity");
                 });
 
+            modelBuilder.Entity("Appizza.Modules.Kitchen.DeliveryConfirmation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ConfirmationSource")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("confirmation_source");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<Guid?>("ConfirmedByDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmed_by_device_id");
+
+                    b.Property<Guid?>("ConfirmedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmed_by_user_id");
+
+                    b.Property<DateTimeOffset?>("ContestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("contested_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("ProductionItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("production_item_id");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<int>("SequenceNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence_number");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("SupersededAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("superseded_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductionItemId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_delivery_confirmation_production_item_id")
+                        .HasFilter("status in ('pending','contested')");
+
+                    b.HasIndex("ProductionItemId", "SequenceNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_delivery_confirmation_production_item_id_sequence_number");
+
+                    b.HasIndex("Status", "ExpiresAt")
+                        .HasDatabaseName("ix_delivery_confirmation_status_expires_at");
+
+                    b.HasIndex("EstablishmentId", "ProductionItemId", "Status")
+                        .HasDatabaseName("ix_delivery_confirmation_establishment_id_production_item_id_s~");
+
+                    b.ToTable("delivery_confirmation", "kitchen", t =>
+                        {
+                            t.HasCheckConstraint("ck_delivery_confirmation_actor", "not (confirmed_by_user_id is not null and confirmed_by_device_id is not null)");
+
+                            t.HasCheckConstraint("ck_delivery_confirmation_sequence", "sequence_number > 0");
+
+                            t.HasCheckConstraint("ck_delivery_confirmation_status", "status in ('pending','confirmed_manual','confirmed_automatic','contested','superseded')");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Kitchen.DeliveryContest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DeliveryConfirmationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("delivery_confirmation_id");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<DateTimeOffset>("OpenedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("opened_at");
+
+                    b.Property<Guid?>("OpenedByDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("opened_by_device_id");
+
+                    b.Property<Guid?>("OpenedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("opened_by_user_id");
+
+                    b.Property<Guid>("ProductionItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("production_item_id");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("resolution");
+
+                    b.Property<string>("ResolutionNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("resolution_note");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<Guid?>("ResolvedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resolved_by_user_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeliveryConfirmationId")
+                        .HasDatabaseName("ix_delivery_contest_delivery_confirmation_id");
+
+                    b.HasIndex("ProductionItemId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_delivery_contest_production_item_id")
+                        .HasFilter("status = 'open'");
+
+                    b.HasIndex("ProductionItemId", "Status")
+                        .HasDatabaseName("ix_delivery_contest_production_item_id_status");
+
+                    b.ToTable("delivery_contest", "kitchen", t =>
+                        {
+                            t.HasCheckConstraint("ck_delivery_contest_actor", "not (opened_by_user_id is not null and opened_by_device_id is not null)");
+
+                            t.HasCheckConstraint("ck_delivery_contest_resolution", "(status = 'open' and resolution is null and resolved_at is null) or (status <> 'open' and resolution in ('confirm_delivered','retry_delivery') and resolved_at is not null)");
+
+                            t.HasCheckConstraint("ck_delivery_contest_status", "status in ('open','resolved_delivered','resolved_retry')");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Kitchen.ProductionAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AttemptNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt_number");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("FailureDescription")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("failure_description");
+
+                    b.Property<string>("FailureReasonCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("failure_reason_code");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<Guid>("ProductionItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("production_item_id");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductionItemId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_production_attempt_production_item_id")
+                        .HasFilter("status = 'active'");
+
+                    b.HasIndex("ProductionItemId", "AttemptNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_production_attempt_production_item_id_attempt_number");
+
+                    b.ToTable("production_attempt", "kitchen", t =>
+                        {
+                            t.HasCheckConstraint("ck_production_attempt_number", "attempt_number > 0");
+
+                            t.HasCheckConstraint("ck_production_attempt_status", "status in ('active','completed','failed','abandoned')");
+                        });
+                });
+
             modelBuilder.Entity("Appizza.Modules.Kitchen.ProductionItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2836,6 +3091,10 @@ namespace Appizza.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int>("CurrentAttemptNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("current_attempt_number");
+
                     b.Property<Guid>("EstablishmentId")
                         .HasColumnType("uuid")
                         .HasColumnName("establishment_id");
@@ -2844,11 +3103,19 @@ namespace Appizza.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("order_item_id");
 
+                    b.Property<DateTimeOffset?>("PreparationStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("preparation_started_at");
+
                     b.Property<long>("QueuePosition")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint")
                         .HasColumnName("queue_position")
                         .HasDefaultValueSql("nextval('kitchen.production_queue_position_seq')");
+
+                    b.Property<DateTimeOffset?>("ReadyAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ready_at");
 
                     b.Property<DateTimeOffset>("ReceivedAt")
                         .HasColumnType("timestamp with time zone")
@@ -2891,8 +3158,63 @@ namespace Appizza.Persistence.Migrations
 
                     b.ToTable("production_item", "kitchen", t =>
                         {
-                            t.HasCheckConstraint("ck_production_item_phase4_status", "status in ('awaiting_acceptance','accepted','awaiting_preparation')");
+                            t.HasCheckConstraint("ck_production_item_status", "status in ('awaiting_acceptance','accepted','awaiting_preparation','in_preparation','paused','ready','awaiting_delivery_confirmation','delivered','cancelled')");
                         });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Kitchen.ProductionPause", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<DateTimeOffset>("PausedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paused_at");
+
+                    b.Property<Guid>("PausedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("paused_by_user_id");
+
+                    b.Property<Guid>("ProductionAttemptId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("production_attempt_id");
+
+                    b.Property<Guid>("ProductionItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("production_item_id");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("reason_code");
+
+                    b.Property<DateTimeOffset?>("ResumedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resumed_at");
+
+                    b.Property<Guid?>("ResumedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resumed_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductionAttemptId")
+                        .HasDatabaseName("ix_production_pause_production_attempt_id");
+
+                    b.HasIndex("ProductionItemId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_production_pause_production_item_id")
+                        .HasFilter("resumed_at is null");
+
+                    b.ToTable("production_pause", "kitchen");
                 });
 
             modelBuilder.Entity("Appizza.Modules.Kitchen.ProductionStatusHistory", b =>
@@ -3283,7 +3605,7 @@ namespace Appizza.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_customer_order_amounts", "subtotal_amount >= 0 and discount_amount = 0 and total_amount >= 0");
 
-                            t.HasCheckConstraint("ck_customer_order_status", "status in ('submitted')");
+                            t.HasCheckConstraint("ck_customer_order_status", "status in ('submitted','partially_cancelled','cancelled')");
                         });
                 });
 
@@ -3321,6 +3643,10 @@ namespace Appizza.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<int>("CurrentRevisionNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("current_revision_number");
 
                     b.Property<Guid>("LocalCartItemId")
                         .HasColumnType("uuid")
@@ -3659,6 +3985,336 @@ namespace Appizza.Persistence.Migrations
                         .HasDatabaseName("ix_order_item_pizza_fraction_order_item_id_position");
 
                     b.ToTable("order_item_pizza_fraction", "ordering");
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("CustomerConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("customer_confirmed_at");
+
+                    b.Property<int?>("CustomerConfirmedVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("customer_confirmed_version");
+
+                    b.Property<string>("CustomerNote")
+                        .HasColumnType("text")
+                        .HasColumnName("customer_note");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedByDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_device_id");
+
+                    b.Property<Guid?>("DecidedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by_user_id");
+
+                    b.Property<string>("DecisionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("decision_reason");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<Guid>("OrderItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_item_id");
+
+                    b.Property<int>("OriginalRevisionNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("original_revision_number");
+
+                    b.Property<decimal>("PriceDifference")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("price_difference");
+
+                    b.Property<string>("ProductionAction")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("production_action");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("reason_code");
+
+                    b.Property<string>("RequestType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("request_type");
+
+                    b.Property<int>("RequestVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("request_version");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<Guid?>("RequestedByDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_device_id");
+
+                    b.Property<Guid?>("RequestedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by_user_id");
+
+                    b.Property<string>("RequestedConfiguration")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("requested_configuration");
+
+                    b.Property<string>("RequiredApprovalLevel")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("required_approval_level");
+
+                    b.Property<string>("ReviewHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("review_hash");
+
+                    b.Property<string>("ReviewedSnapshot")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("reviewed_snapshot");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.Property<DateTimeOffset?>("WithdrawnAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("withdrawn_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("ix_order_item_request_order_id");
+
+                    b.HasIndex("OrderItemId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_order_item_request_order_item_id")
+                        .HasFilter("status in ('pending_validation','pending_customer_confirmation','pending_operational_decision')");
+
+                    b.HasIndex("EstablishmentId", "Status", "RequestedAt")
+                        .HasDatabaseName("ix_order_item_request_establishment_id_status_requested_at");
+
+                    b.ToTable("order_item_request", "ordering", t =>
+                        {
+                            t.HasCheckConstraint("ck_order_item_request_cancellation_shape", "request_type <> 'cancel' or (requested_configuration is null and price_difference = 0)");
+
+                            t.HasCheckConstraint("ck_order_item_request_production_action", "production_action is null or production_action in ('continue','restart','reject')");
+
+                            t.HasCheckConstraint("ck_order_item_request_status", "status in ('pending_validation','pending_customer_confirmation','pending_operational_decision','approved','rejected','withdrawn','expired')");
+
+                            t.HasCheckConstraint("ck_order_item_request_type", "request_type in ('cancel','change')");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long>("AvailabilityVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("availability_version");
+
+                    b.Property<Guid>("CatalogRevisionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("catalog_revision_id");
+
+                    b.Property<long>("CatalogVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("catalog_version");
+
+                    b.Property<string>("Configuration")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("configuration");
+
+                    b.Property<string>("ConfigurationVersion")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("configuration_version");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("EffectiveAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("effective_at");
+
+                    b.Property<Guid?>("EffectiveByDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("effective_by_device_id");
+
+                    b.Property<Guid?>("EffectiveByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("effective_by_user_id");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<Guid>("OrderItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_item_id");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("origin");
+
+                    b.Property<decimal>("PreviousTotalAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("previous_total_amount");
+
+                    b.Property<decimal>("PreviousUnitAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("previous_unit_amount");
+
+                    b.Property<decimal>("PriceDifference")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("price_difference");
+
+                    b.Property<int>("RevisionNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("revision_number");
+
+                    b.Property<string>("Snapshot")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("snapshot");
+
+                    b.Property<int>("SnapshotSchemaVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("snapshot_schema_version");
+
+                    b.Property<Guid>("SourceRequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_request_id");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("total_amount");
+
+                    b.Property<decimal>("UnitAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("unit_amount");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_order_item_revision_source_request_id");
+
+                    b.HasIndex("OrderItemId", "RevisionNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_order_item_revision_order_item_id_revision_number");
+
+                    b.HasIndex("EstablishmentId", "OrderItemId", "EffectiveAt")
+                        .HasDatabaseName("ix_order_item_revision_establishment_id_order_item_id_effectiv~");
+
+                    b.ToTable("order_item_revision", "ordering", t =>
+                        {
+                            t.HasCheckConstraint("ck_order_item_revision_actor", "not (effective_by_user_id is not null and effective_by_device_id is not null)");
+
+                            t.HasCheckConstraint("ck_order_item_revision_amounts", "previous_unit_amount >= 0 and unit_amount >= 0 and previous_total_amount >= 0 and total_amount >= 0");
+
+                            t.HasCheckConstraint("ck_order_item_revision_number", "revision_number > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderStatusHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("changed_at");
+
+                    b.Property<Guid?>("CorrelationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<string>("CustomerMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("customer_message");
+
+                    b.Property<string>("NewStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("new_status");
+
+                    b.Property<Guid>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<string>("PreviousStatus")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("previous_status");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("SubstatusCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("substatus_code");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId", "ChangedAt")
+                        .HasDatabaseName("ix_order_status_history_order_id_changed_at");
+
+                    b.ToTable("order_status_history", "ordering");
                 });
 
             modelBuilder.Entity("Appizza.Modules.Tables.DiningTable", b =>
@@ -4806,6 +5462,39 @@ namespace Appizza.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Appizza.Modules.Kitchen.DeliveryConfirmation", b =>
+                {
+                    b.HasOne("Appizza.Modules.Kitchen.ProductionItem", null)
+                        .WithMany()
+                        .HasForeignKey("ProductionItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Kitchen.DeliveryContest", b =>
+                {
+                    b.HasOne("Appizza.Modules.Kitchen.DeliveryConfirmation", null)
+                        .WithMany()
+                        .HasForeignKey("DeliveryConfirmationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Kitchen.ProductionItem", null)
+                        .WithMany()
+                        .HasForeignKey("ProductionItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Kitchen.ProductionAttempt", b =>
+                {
+                    b.HasOne("Appizza.Modules.Kitchen.ProductionItem", null)
+                        .WithMany()
+                        .HasForeignKey("ProductionItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Appizza.Modules.Kitchen.ProductionItem", b =>
                 {
                     b.HasOne("Appizza.Modules.Establishments.Establishment", null)
@@ -4823,6 +5512,21 @@ namespace Appizza.Persistence.Migrations
                     b.HasOne("Appizza.Modules.Kitchen.Station", null)
                         .WithMany()
                         .HasForeignKey("StationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Kitchen.ProductionPause", b =>
+                {
+                    b.HasOne("Appizza.Modules.Kitchen.ProductionAttempt", null)
+                        .WithMany()
+                        .HasForeignKey("ProductionAttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Kitchen.ProductionItem", null)
+                        .WithMany()
+                        .HasForeignKey("ProductionItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -4955,6 +5659,57 @@ namespace Appizza.Persistence.Migrations
                     b.HasOne("Appizza.Modules.Ordering.OrderItem", null)
                         .WithMany()
                         .HasForeignKey("OrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemRequest", b =>
+                {
+                    b.HasOne("Appizza.Modules.Establishments.Establishment", null)
+                        .WithMany()
+                        .HasForeignKey("EstablishmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Ordering.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Ordering.OrderItem", null)
+                        .WithMany()
+                        .HasForeignKey("OrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderItemRevision", b =>
+                {
+                    b.HasOne("Appizza.Modules.Establishments.Establishment", null)
+                        .WithMany()
+                        .HasForeignKey("EstablishmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Ordering.OrderItem", null)
+                        .WithMany()
+                        .HasForeignKey("OrderItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Ordering.OrderItemRequest", null)
+                        .WithOne()
+                        .HasForeignKey("Appizza.Modules.Ordering.OrderItemRevision", "SourceRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Ordering.OrderStatusHistory", b =>
+                {
+                    b.HasOne("Appizza.Modules.Ordering.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

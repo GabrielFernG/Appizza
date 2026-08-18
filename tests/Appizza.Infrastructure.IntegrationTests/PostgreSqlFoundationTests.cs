@@ -10,6 +10,28 @@ namespace Appizza.Infrastructure.IntegrationTests;
 public sealed class PostgreSqlFoundationTests
 {
     [Fact]
+    public async Task Phase5DeliveryUpgradesIncrementallyFromOrderItemRevisions()
+    {
+        if (!string.Equals(Environment.GetEnvironmentVariable("APPIZZA_RUN_CONTAINER_TESTS"), "true", StringComparison.OrdinalIgnoreCase)) return;
+        await using var postgres = new PostgreSqlBuilder("postgres:18.4").Build();
+        await postgres.StartAsync(CancellationToken.None);
+        var options = new DbContextOptionsBuilder<AppizzaDbContext>().UseNpgsql(postgres.GetConnectionString(), npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history", "integration")).Options;
+        await using var db = new AppizzaDbContext(options);
+        await db.Database.MigrateAsync("20260813040730_Phase5_OrderItemRevisions", CancellationToken.None);
+        await using var before = new NpgsqlConnection(postgres.GetConnectionString());
+        await before.OpenAsync(CancellationToken.None);
+        Assert.Equal(0, await ScalarAsync(before, "select count(*) from integration.__ef_migrations_history where \"MigrationId\" = '20260815033939_Phase5_Delivery'"));
+        await db.Database.MigrateAsync(CancellationToken.None);
+        Assert.Equal(1, await ScalarAsync(before, "select count(*) from integration.__ef_migrations_history where \"MigrationId\" = '20260815033939_Phase5_Delivery'"));
+        Assert.Equal(2, await ScalarAsync(before, "select count(*) from information_schema.tables where table_schema='kitchen' and table_name in ('delivery_confirmation','delivery_contest')"));
+    }
+
+    private static async Task<long> ScalarAsync(NpgsqlConnection connection, string sql)
+    {
+        await using var command = new NpgsqlCommand(sql, connection);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(CancellationToken.None), System.Globalization.CultureInfo.InvariantCulture);
+    }
+    [Fact]
     public async Task AllMigrationsCreateExpectedTablesAndProtectConcurrentActiveSessions()
     {
         if (!string.Equals(

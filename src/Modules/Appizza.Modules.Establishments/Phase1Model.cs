@@ -67,6 +67,9 @@ public static class Phase1SettingKeys
     public const string SessionOpeningMode = "session.opening_mode";
     public const string TableReleaseMode = "table.release_mode";
     public const string CpfRetentionDays = "privacy.cpf_retention_days";
+    public const string DeliveryAutoConfirmationEnabled = "delivery.auto_confirmation_enabled";
+    public const string DeliveryAutoConfirmationMinutes = "delivery.auto_confirmation_minutes";
+    public const string DeliveryAutoContestationWindowMinutes = "delivery.auto_contestation_window_minutes";
 }
 
 public sealed class EstablishmentConfiguration : IEntityTypeConfiguration<Establishment>

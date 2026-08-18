@@ -59,6 +59,10 @@ builder.Services.AddAuthorization();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IPhase4NotificationPublisher, Phase4SignalRNotificationPublisher>();
 builder.Services.AddSingleton<IPhase4OrderingHook, Phase4OrderingHook>();
+builder.Services.AddSingleton<IPhase5ChangeHook, Phase5ChangeHook>();
+builder.Services.AddSingleton<Phase5DeliveryConcurrencyHook>();
+builder.Services.AddSingleton<IPhase5DeliveryConcurrencyHook>(p => p.GetRequiredService<Phase5DeliveryConcurrencyHook>());
+builder.Services.AddSingleton<IPhase5ReviewDiagnostics, Phase5ReviewDiagnostics>();
 builder.Services.AddHostedService<CatalogSignalRDispatcher>();
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<Phase4OutboxDispatcher>();
 builder.Services.AddRateLimiter(options => options.AddFixedWindowLimiter("authentication", limiter =>
@@ -126,6 +130,11 @@ app.MapPhase1Endpoints();
 app.MapPhase2Endpoints();
 app.MapPhase3Endpoints();
 app.MapPhase4Endpoints();
+app.MapPhase5ProductionEndpoints();
+app.MapPhase5DeliveryEndpoints();
+app.MapPhase5OrderStatusEndpoints();
+app.MapPhase5CancellationEndpoints();
+app.MapPhase5ChangeEndpoints();
 app.MapHub<Phase1Hub>("/hubs/v1/updates");
 
 app.Run();
