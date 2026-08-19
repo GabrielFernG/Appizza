@@ -181,3 +181,17 @@ Evidência final do encerramento: API/Testcontainers 250/250; Delivery E2E 4/4;
 Unit 85/85; Infrastructure 4/4; Architecture 2/2; Operations frontend 10/10;
 builds e validações de backend, Table Device, realtime, Outbox/Inbox e
 reconciliação aprovados. Não há bug funcional aberto.
+## Fase 6 — Promotions + Communications
+
+Status: especificação normativa preparada; implementação condicionada a decisões de produto.
+
+Objetivo: promoções autoritativas na submissão do pedido e comunicações multimídia vigentes no Table Device.
+
+MUST: lifecycle, RBAC, idempotência, concorrência, snapshot imutável de desconto, publicação/expiração e read model.
+SHOULD: limites, prioridade, projeções administrativas e invalidação SignalR.
+FUTURE: cupons, segmentação, cashback, push/e-mail/SMS e vínculo Promotion-Communication.
+
+Macro-unidades: Promotions vertical; Communications vertical; integração/clientes e E2E; certificação final.
+### Bloqueio normativo remanescente
+
+As decisões de tipos, automaticidade, não acumulação, desempate determinístico e snapshot foram aprovadas. A implementação permanece `BLOCKED_BY_DOCUMENTATION` até decisão explícita sobre escopo de elegibilidade, semântica de `fixed_amount` e eventual limite de uso. Essas decisões têm impacto financeiro direto.

@@ -812,3 +812,19 @@ Antes de adicionar evento:
 - [ ] retry definido;
 - [ ] SignalR separado de integração;
 - [ ] testes de consumidor duplicado.
+## Eventos normativos propostos para a Fase 6
+
+| EventType | Producer | Consumers | Efeito | Outbox | Inbox | SignalR |
+|---|---|---|---|---|---|---|
+| `PromotionActivated` | Promotions | Ordering, Operations | torna versão elegível | sim | sim | invalidação |
+| `PromotionPaused` | Promotions | Ordering, Operations | remove elegibilidade futura | sim | sim | invalidação |
+| `PromotionExpired` | Worker/Promotions | Ordering, Operations | remove elegibilidade | sim | sim | invalidação |
+| `PromotionApplied` | Ordering | Operations/Reporting quando implementados | registra snapshot aplicado | sim se externo | sim | opcional |
+| `CommunicationPublished` | Communications | Table Device, Operations | disponibiliza conteúdo | sim | sim | invalidação |
+| `CommunicationPaused` | Communications | Table Device, Operations | remove conteúdo | sim | sim | invalidação |
+| `CommunicationExpired` | Worker/Communications | Table Device, Operations | remove conteúdo vencido | sim | sim | invalidação |
+
+`CommunicationDisplayed`, `CommunicationPlaybackCompleted` e `CommunicationPlaybackFailed` são FUTURE; não criar consumidores sem efeito material definido.
+## Nota normativa da Fase 6
+
+Os eventos de Promotions permanecem especificados quanto a producer, Outbox e consumidores, mas sua implementação fica condicionada às decisões de elegibilidade e semântica de `fixed_amount` registradas em `docs/08-promocoes-comunicacao.md`. Não publicar eventos de aplicação financeira antes dessa definição.

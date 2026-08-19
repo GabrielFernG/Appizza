@@ -31,7 +31,7 @@ public static class Phase1DevelopmentSeeder
             for (var number = 1; number <= 4; number++) db.Add(new DiningTable { Id = Guid.NewGuid(), EstablishmentId = establishmentId, SectorId = sector.Id, Name = $"Mesa {number:00}", InternalCode = $"M{number:00}", DisplayOrder = number, CreatedAt = now, UpdatedAt = now });
         }
         var permissions = new Dictionary<string, Permission>(StringComparer.Ordinal);
-        var allPermissions = Phase1Permissions.All.Concat(Phase2Permissions.All).Concat(Phase4KitchenPermissions.All).Concat(Phase5CancellationPermissions.All).ToArray();
+        var allPermissions = Phase1Permissions.All.Concat(Phase2Permissions.All).Concat(Phase4KitchenPermissions.All).Concat(Phase5CancellationPermissions.All).Concat(Appizza.Modules.Promotions.Phase6PromotionPermissions.All).ToArray();
         foreach (var code in allPermissions)
         {
             var permission = await db.Set<Permission>().SingleOrDefaultAsync(x => x.Code == code, ct) ?? new Permission { Id = Guid.NewGuid(), Code = code, Module = code.Split('.')[0], Name = code };

@@ -1265,3 +1265,23 @@ Outbox e idempotência. Replay e cross-tenant seguem 26.1; estado inválido reto
 
 Não existem nesta fase endpoints de service request/Occurrence, prioridade/reordenação, scope por
 station, cancelamento parcial, refund, Payments, Promotions ou Closing.
+## Contratos normativos propostos — Fase 6
+
+Dependem da aprovação das PROPOSED_DECISIONs de `docs/08-promocoes-comunicacao.md`.
+
+| Método/rota | Permission | Request/Response | Idempotency | Version | Erros |
+|---|---|---|---|---|---|
+| `GET /api/v1/operations/promotions` | `promotions.view` | lista administrativa | não | n/a | 403 |
+| `POST /api/v1/operations/promotions` | `promotions.create` | cria promotion/version | sim | não | 400/403/409 |
+| `POST /api/v1/operations/promotions/{id}/activate` | `promotions.activate` | vigência/versão ativa | sim | sim | 400/403/409 |
+| `POST /api/v1/operations/promotions/{id}/pause` | `promotions.edit` | expectedVersion | sim | sim | 403/404/409 |
+| `GET /api/v1/table-device/session/communications` | device da sessão | comunicações vigentes | não | n/a | 401/403/404 |
+| `GET /api/v1/operations/communications` | `communications.view` | lista administrativa | não | n/a | 403 |
+| `POST /api/v1/operations/communications` | `communications.create` | conteúdo, mídia e janela | sim | não | 400/403/409 |
+| `POST /api/v1/operations/communications/{id}/publish` | `communications.publish` | expectedVersion | sim | sim | 403/404/409 |
+| `POST /api/v1/operations/communications/{id}/pause` | `communications.edit` | expectedVersion | sim | sim | 403/404/409 |
+
+Aplicação de promoção pertence à submissão autoritativa do Ordering; o cliente não envia desconto calculado. Table Device não altera Promotion ou Communication.
+## Bloqueio de contrato — Promotions Fase 6
+
+Os endpoints administrativos propostos não podem ser implementados ainda: o request de criação precisa definir escopo de elegibilidade e semântica de `fixed_amount`. A ausência desses campos tornaria o contrato financeiro ambíguo. Table Device não terá endpoint de seleção/aplicação manual.

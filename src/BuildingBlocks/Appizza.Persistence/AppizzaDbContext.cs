@@ -7,6 +7,7 @@ using Appizza.Modules.Catalog;
 using Appizza.Modules.Media;
 using Appizza.Modules.Ordering;
 using Appizza.Modules.Kitchen;
+using Appizza.Modules.Promotions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using System.Text.RegularExpressions;
@@ -25,6 +26,9 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
     public DbSet<TableSession> TableSessions => Set<TableSession>();
     public DbSet<DeliveryConfirmation> DeliveryConfirmations => Set<DeliveryConfirmation>();
     public DbSet<DeliveryContest> DeliveryContests => Set<DeliveryContest>();
+    public DbSet<Promotion> Promotions => Set<Promotion>();
+    public DbSet<PromotionVersion> PromotionVersions => Set<PromotionVersion>();
+    public DbSet<PromotionApplication> PromotionApplications => Set<PromotionApplication>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +39,7 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(DiningTableConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CategoryConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MediaAssetConfiguration).Assembly);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(PromotionConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CartSimulationConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(StationConfiguration).Assembly);
         modelBuilder.HasSequence<long>("table_session_number_seq", "tables");

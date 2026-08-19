@@ -26,6 +26,7 @@
     <ProjectReference Include="..\..\Modules\Appizza.Modules.Catalog\Appizza.Modules.Catalog.csproj" />
     <ProjectReference Include="..\..\Modules\Appizza.Modules.Ordering\Appizza.Modules.Ordering.csproj" />
     <ProjectReference Include="..\..\Modules\Appizza.Modules.Kitchen\Appizza.Modules.Kitchen.csproj" />
+    <ProjectReference Include="..\..\Modules\Appizza.Modules.Promotions\Appizza.Modules.Promotions.csproj" />
   </ItemGroup>
 
 </Project>
