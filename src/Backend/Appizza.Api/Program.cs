@@ -136,6 +136,7 @@ app.MapPhase5OrderStatusEndpoints();
 app.MapPhase5CancellationEndpoints();
 app.MapPhase5ChangeEndpoints();
 app.MapPhase6PromotionEndpoints();
+app.MapPhase6CommunicationEndpoints();
 app.MapHub<Phase1Hub>("/hubs/v1/updates");
 
 app.Run();

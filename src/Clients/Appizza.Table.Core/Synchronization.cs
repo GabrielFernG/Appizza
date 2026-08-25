@@ -76,9 +76,10 @@ public sealed class CatalogRealtimeClient(Uri hubUri, Func<Task<string?>> access
 {
     private readonly HubConnection _connection = new HubConnectionBuilder().WithUrl(hubUri, options => options.AccessTokenProvider = accessTokenProvider).WithAutomaticReconnect().Build();
     public event Func<CatalogInvalidation, Task>? Invalidated;
+    public event Func<Task>? CommunicationsInvalidated;
     public event Func<Task>? Reconnected;
     public HubConnectionState State => _connection.State;
-    public async Task StartAsync(CancellationToken cancellationToken) { _connection.On<CatalogInvalidation>("CatalogInvalidated", notification => Invalidated?.Invoke(notification) ?? Task.CompletedTask); _connection.Reconnected += _ => Reconnected?.Invoke() ?? Task.CompletedTask; await _connection.StartAsync(cancellationToken); }
+    public async Task StartAsync(CancellationToken cancellationToken) { _connection.On<CatalogInvalidation>("CatalogInvalidated", notification => Invalidated?.Invoke(notification) ?? Task.CompletedTask); _connection.On<System.Text.Json.JsonElement>("CommunicationsInvalidated", _ => CommunicationsInvalidated?.Invoke() ?? Task.CompletedTask); _connection.Reconnected += _ => Reconnected?.Invoke() ?? Task.CompletedTask; await _connection.StartAsync(cancellationToken); }
     public Task StopAsync(CancellationToken cancellationToken) => _connection.StopAsync(cancellationToken);
     public ValueTask DisposeAsync() => _connection.DisposeAsync();
 }

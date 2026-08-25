@@ -61,11 +61,24 @@ public static class Phase2Endpoints
 
         var media = app.MapGroup("/api/v1/operations/media/assets").RequireAuthorization();
         media.MapPost("/", CreateMediaAsset);
+        media.MapGet("", ListMediaAssets);
         media.MapPut("/{assetId:guid}/content", UploadMediaAsset).DisableAntiforgery();
         media.MapGet("/{assetId:guid}", GetMediaAsset);
         media.MapGet("/{assetId:guid}/content", DownloadMediaAsset);
         media.MapPost("/{assetId:guid}/archive", ArchiveMediaAsset);
         return app;
+    }
+
+    private static async Task<IResult> ListMediaAssets(ClaimsPrincipal principal, AppizzaDbContext db, CancellationToken ct)
+    {
+        var denied = await Authorize(principal, db, "media.read", ct); if (denied is not null) return denied;
+        var tenant = Tenant(principal);
+        var assets = await db.Set<MediaAsset>().AsNoTracking()
+            .Where(x => x.EstablishmentId == tenant)
+            .OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id)
+            .Select(x => new { x.Id, x.FileName, x.MimeType, x.Status, x.FileSize, x.CreatedAt, x.UpdatedAt })
+            .ToListAsync(ct);
+        return Results.Ok(assets);
     }
 
     private static async Task<IResult> ListCategories(ClaimsPrincipal principal, AppizzaDbContext db, CancellationToken ct)

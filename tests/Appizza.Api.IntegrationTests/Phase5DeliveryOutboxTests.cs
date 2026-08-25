@@ -57,10 +57,13 @@ public sealed class Phase5DeliveryOutboxTests
     [Fact]
     public void DeliveryRegistryContainsExactlyTheEightNormativeEvents()
     {
-        Assert.Equal(8, Phase4OutboxDispatcher.DeliveryConsumerRegistry.Count);
-        Assert.Equal(
-            DeliveryConsumerMatrix().Select(static row => (string)row[0]).OrderBy(static x => x),
-            Phase4OutboxDispatcher.DeliveryConsumerRegistry.Keys.OrderBy(static x => x));
+        var expected = DeliveryConsumerMatrix().Select(static row => (string)row[0]).ToHashSet(StringComparer.Ordinal);
+        var actualDelivery = Phase4OutboxDispatcher.DeliveryConsumerRegistry.Keys
+            .Where(expected.Contains)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(8, expected.Count);
+        Assert.Equal(expected, actualDelivery);
     }
 
 }

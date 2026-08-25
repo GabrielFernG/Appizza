@@ -8,6 +8,7 @@ using Appizza.Modules.Media;
 using Appizza.Modules.Ordering;
 using Appizza.Modules.Kitchen;
 using Appizza.Modules.Promotions;
+using Appizza.Modules.Communications;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using System.Text.RegularExpressions;
@@ -29,6 +30,7 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<PromotionVersion> PromotionVersions => Set<PromotionVersion>();
     public DbSet<PromotionApplication> PromotionApplications => Set<PromotionApplication>();
+    public DbSet<Communication> Communications => Set<Communication>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -40,6 +42,7 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CategoryConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MediaAssetConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(PromotionConfiguration).Assembly);
+        ConfigureCommunications(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CartSimulationConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(StationConfiguration).Assembly);
         modelBuilder.HasSequence<long>("table_session_number_seq", "tables");
@@ -134,6 +137,8 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
         modelBuilder.Entity<ProductAvailability>().HasOne<Product>().WithOne().HasForeignKey<ProductAvailability>(x => x.ProductId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductVariantAvailability>().HasOne<ProductVariant>().WithOne().HasForeignKey<ProductVariantAvailability>(x => x.ProductVariantId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<MediaAsset>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Communication>().HasOne<MediaAsset>().WithMany().HasForeignKey(x => x.MediaAssetId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Communication>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Category>().HasOne<MediaAsset>().WithMany().HasForeignKey(x => x.ImageMediaId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Product>().HasOne<MediaAsset>().WithMany().HasForeignKey(x => x.PrimaryImageMediaId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductVariant>().HasOne<MediaAsset>().WithMany().HasForeignKey(x => x.ImageMediaId).OnDelete(DeleteBehavior.Restrict);
@@ -166,6 +171,18 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
         modelBuilder.Entity<ProductionAttempt>().HasOne<ProductionItem>().WithMany().HasForeignKey(x => x.ProductionItemId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionPause>().HasOne<ProductionItem>().WithMany().HasForeignKey(x => x.ProductionItemId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<ProductionPause>().HasOne<ProductionAttempt>().WithMany().HasForeignKey(x => x.ProductionAttemptId).OnDelete(DeleteBehavior.Restrict);
+    }
+
+    private static void ConfigureCommunications(ModelBuilder modelBuilder)
+    {
+        var builder = modelBuilder.Entity<Communication>();
+        builder.ToTable("communication", "communications", table =>
+        {
+            table.HasCheckConstraint("ck_communication_status", "status in ('draft','published','paused','expired','archived')");
+            table.HasCheckConstraint("ck_communication_media_type", "media_type in ('image','video')");
+            table.HasCheckConstraint("ck_communication_window", "starts_at < ends_at");
+        });
+        builder.HasKey(x => x.Id); builder.Property(x => x.Title).HasMaxLength(200); builder.Property(x => x.Body).HasMaxLength(4000); builder.Property(x => x.MediaType).HasMaxLength(20); builder.Property(x => x.Status).HasMaxLength(20); builder.Property(x => x.Version).IsConcurrencyToken(); builder.HasIndex(x => new { x.EstablishmentId, x.Status, x.Priority, x.StartsAt, x.EndsAt }); builder.HasIndex(x => new { x.EstablishmentId, x.Id }).IsUnique();
     }
 
     private static void ApplySnakeCaseNames(ModelBuilder modelBuilder)
