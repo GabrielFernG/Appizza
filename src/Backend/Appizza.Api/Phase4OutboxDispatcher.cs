@@ -50,6 +50,7 @@ public sealed class Phase4SignalRNotificationPublisher(Microsoft.AspNetCore.Sign
         "delivery-confirmed-by-customer.v1" or "delivery-confirmed-by-employee.v1" or "delivery-auto-confirmed.v1" => ["DeliveryChanged", "OrderStatusChanged"],
         "production-item-delivered.v1" => ["OrderStatusChanged"],
         "delivery-contested.v1" or "delivery-contest-resolved.v1" => ["DeliveryChanged", "OrderStatusChanged"],
+        "communication-published.v1" or "communication-paused.v1" or "communication-archived.v1" => ["CommunicationsInvalidated"],
         "order-submitted.v1" => ["OrderSubmitted"],
         "production-item-accepted.v1" => ["ProductionItemAccepted"],
         _ => ["ProductionQueueChanged"]
@@ -93,11 +94,14 @@ public sealed class Phase4OutboxDispatcher(IServiceScopeFactory scopeFactory, IP
         ["delivery-auto-confirmed.v1"] = ["ordering-public-status-v1", "kitchen-signalr-v1"],
         ["production-item-delivered.v1"] = ["ordering-completion-v1", "kitchen-signalr-v1"],
         ["delivery-contested.v1"] = ["delivery-worker-v1", "kitchen-signalr-v1"],
-        ["delivery-contest-resolved.v1"] = ["ordering-public-status-v1", "kitchen-signalr-v1"]
+        ["delivery-contest-resolved.v1"] = ["ordering-public-status-v1", "kitchen-signalr-v1"],
+        ["communication-published.v1"] = ["communications-signalr-v1"],
+        ["communication-paused.v1"] = ["communications-signalr-v1"],
+        ["communication-archived.v1"] = ["communications-signalr-v1"]
     };
 
     public static IReadOnlyDictionary<string, IReadOnlyList<string>> DeliveryConsumerRegistry { get; } =
-        Consumers.Where(static pair => pair.Key is "production-item-sent-to-table.v1" or "delivery-confirmation-requested.v1" or "delivery-confirmed-by-customer.v1" or "delivery-confirmed-by-employee.v1" or "delivery-auto-confirmed.v1" or "production-item-delivered.v1" or "delivery-contested.v1" or "delivery-contest-resolved.v1")
+        Consumers.Where(static pair => pair.Key is "production-item-sent-to-table.v1" or "delivery-confirmation-requested.v1" or "delivery-confirmed-by-customer.v1" or "delivery-confirmed-by-employee.v1" or "delivery-auto-confirmed.v1" or "production-item-delivered.v1" or "delivery-contested.v1" or "delivery-contest-resolved.v1" or "communication-published.v1" or "communication-paused.v1" or "communication-archived.v1")
             .ToDictionary(static pair => pair.Key, static pair => (IReadOnlyList<string>)pair.Value, StringComparer.Ordinal);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

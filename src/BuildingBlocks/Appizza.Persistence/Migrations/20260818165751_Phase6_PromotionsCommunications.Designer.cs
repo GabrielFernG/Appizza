@@ -3,6 +3,7 @@ using System;
 using Appizza.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Appizza.Persistence.Migrations
 {
     [DbContext(typeof(AppizzaDbContext))]
-    partial class AppizzaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260818165751_Phase6_PromotionsCommunications")]
+    partial class Phase6PromotionsCommunications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1838,91 +1841,6 @@ namespace Appizza.Persistence.Migrations
                         .HasDatabaseName("ix_product_variant_ingredient_override_product_variant_id_prod~");
 
                     b.ToTable("product_variant_ingredient_override", "catalog");
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Communications.Communication", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Body")
-                        .HasMaxLength(4000)
-                        .HasColumnType("character varying(4000)")
-                        .HasColumnName("body");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<DateTimeOffset>("EndsAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("ends_at");
-
-                    b.Property<Guid>("EstablishmentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("establishment_id");
-
-                    b.Property<Guid?>("MediaAssetId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("media_asset_id");
-
-                    b.Property<string>("MediaType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("media_type");
-
-                    b.Property<int>("Priority")
-                        .HasColumnType("integer")
-                        .HasColumnName("priority");
-
-                    b.Property<DateTimeOffset>("StartsAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("starts_at");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("status");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("title");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<long>("Version")
-                        .IsConcurrencyToken()
-                        .HasColumnType("bigint")
-                        .HasColumnName("version");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MediaAssetId")
-                        .HasDatabaseName("ix_communication_media_asset_id");
-
-                    b.HasIndex("EstablishmentId", "Id")
-                        .IsUnique()
-                        .HasDatabaseName("ix_communication_establishment_id_id");
-
-                    b.HasIndex("EstablishmentId", "Status", "Priority", "StartsAt", "EndsAt")
-                        .HasDatabaseName("ix_communication_establishment_id_status_priority_starts_at_en~");
-
-                    b.ToTable("communication", "communications", t =>
-                        {
-                            t.HasCheckConstraint("ck_communication_media_type", "media_type in ('image','video')");
-
-                            t.HasCheckConstraint("ck_communication_status", "status in ('draft','published','paused','expired','archived')");
-
-                            t.HasCheckConstraint("ck_communication_window", "starts_at < ends_at");
-                        });
                 });
 
             modelBuilder.Entity("Appizza.Modules.Devices.Device", b =>
@@ -5580,20 +5498,6 @@ namespace Appizza.Persistence.Migrations
                         .HasForeignKey("ProductVariantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Communications.Communication", b =>
-                {
-                    b.HasOne("Appizza.Modules.Establishments.Establishment", null)
-                        .WithMany()
-                        .HasForeignKey("EstablishmentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Appizza.Modules.Media.MediaAsset", null)
-                        .WithMany()
-                        .HasForeignKey("MediaAssetId")
-                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Appizza.Modules.Devices.Device", b =>

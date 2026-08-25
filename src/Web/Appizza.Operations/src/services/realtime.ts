@@ -4,12 +4,14 @@ export type DeliveryInvalidation = (eventId: string, eventType: string) => void
 
 export class OperationsRealtime {
   private connection: HubConnection | null = null
-  constructor(private readonly token: () => string | null, private readonly onInvalidation: DeliveryInvalidation) {}
+  constructor(private readonly token: () => string | null, private readonly onInvalidation: DeliveryInvalidation, private readonly onReconnect: () => void = () => {}) {}
   async start(): Promise<void> {
     this.connection = new HubConnectionBuilder().withUrl('/hubs/phase1', { accessTokenFactory: () => this.token() ?? '' }).withAutomaticReconnect().configureLogging(LogLevel.Warning).build()
     const invalidate = (payload: { eventId?: string; eventType?: string }) => { if (payload.eventId && payload.eventType) this.onInvalidation(payload.eventId, payload.eventType) }
     this.connection.on('DeliveryChanged', invalidate)
     this.connection.on('OrderStatusChanged', invalidate)
+    this.connection.on('CommunicationsInvalidated', invalidate)
+    this.connection.onreconnected(() => this.onReconnect())
     await this.connection.start()
   }
   async stop(): Promise<void> { if (this.connection) await this.connection.stop(); this.connection = null }
