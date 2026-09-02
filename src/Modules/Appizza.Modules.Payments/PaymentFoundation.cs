@@ -105,6 +105,23 @@ public interface IPaymentProvider
     Task<PaymentProviderStatus> ReconcilePaymentAsync(string providerReference, CancellationToken cancellationToken = default);
 }
 
+/// <summary>Deterministic provider used only by development/test composition.</summary>
+public sealed class FakePaymentProvider : IPaymentProvider
+{
+    public Task<PaymentProviderCapabilities> DiscoverCapabilitiesAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(new PaymentProviderCapabilities(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "pix", "credit", "debit" }));
+
+    public Task<PaymentProviderStatus> StartPaymentAsync(StartPaymentRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.Method == PaymentMethod.Cash) throw new InvalidOperationException("CASH_DOES_NOT_USE_PROVIDER");
+        return Task.FromResult(new PaymentProviderStatus("processing", request.ProviderReference ?? $"fake:{request.AttemptId:N}"));
+    }
+
+    public Task<PaymentProviderStatus> GetStatusAsync(string providerReference, CancellationToken cancellationToken = default) => Task.FromResult(new PaymentProviderStatus("unknown", providerReference));
+    public Task<PaymentProviderStatus> CancelPaymentAsync(string providerReference, CancellationToken cancellationToken = default) => Task.FromResult(new PaymentProviderStatus("declined", providerReference));
+    public Task<PaymentProviderStatus> ReconcilePaymentAsync(string providerReference, CancellationToken cancellationToken = default) => Task.FromResult(new PaymentProviderStatus("unknown", providerReference));
+}
+
 public static class PaymentAllocationCalculator
 {
     public static IReadOnlyList<decimal> EqualSplit(decimal total, int parts)

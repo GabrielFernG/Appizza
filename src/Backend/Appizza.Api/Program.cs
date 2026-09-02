@@ -80,6 +80,7 @@ var connectionString = builder.Configuration.GetConnectionString("Appizza")
     ?? throw new InvalidOperationException("ConnectionStrings:Appizza must be configured.");
 builder.Services.AddScoped<PaymentAttemptReservationService>();
 builder.Services.AddScoped<PaymentAttemptLifecycleService>();
+builder.Services.AddSingleton<IPaymentProvider, FakePaymentProvider>();
 builder.Services.AddDbContext<AppizzaDbContext>(options =>
     options.UseNpgsql(connectionString, npgsql =>
         npgsql.MigrationsHistoryTable("__ef_migrations_history", "integration")));
