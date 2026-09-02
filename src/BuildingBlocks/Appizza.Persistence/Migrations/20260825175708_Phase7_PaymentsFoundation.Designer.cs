@@ -3,6 +3,7 @@ using System;
 using Appizza.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Appizza.Persistence.Migrations
 {
     [DbContext(typeof(AppizzaDbContext))]
-    partial class AppizzaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260825175708_Phase7_PaymentsFoundation")]
+    partial class Phase7_PaymentsFoundation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -4588,38 +4591,6 @@ namespace Appizza.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Appizza.Modules.Payments.PaymentAttemptAllocation", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(14, 2)
-                        .HasColumnType("numeric(14,2)")
-                        .HasColumnName("amount");
-
-                    b.Property<Guid>("PaymentAttemptId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("payment_attempt_id");
-
-                    b.Property<Guid>("PaymentPlanAllocationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("payment_plan_allocation_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PaymentPlanAllocationId")
-                        .HasDatabaseName("ix_payment_attempt_allocation_payment_plan_allocation_id");
-
-                    b.HasIndex("PaymentAttemptId", "PaymentPlanAllocationId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_payment_attempt_allocation_payment_attempt_id_payment_plan_~");
-
-                    b.ToTable("payment_attempt_allocation", "payments");
-                });
-
             modelBuilder.Entity("Appizza.Modules.Payments.PaymentPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4634,10 +4605,6 @@ namespace Appizza.Persistence.Migrations
                     b.Property<Guid>("EstablishmentId")
                         .HasColumnType("uuid")
                         .HasColumnName("establishment_id");
-
-                    b.Property<Guid>("LogicalPlanId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("logical_plan_id");
 
                     b.Property<string>("Mode")
                         .IsRequired()
@@ -4669,10 +4636,6 @@ namespace Appizza.Persistence.Migrations
 
                     b.HasIndex("EstablishmentId", "TableSessionId", "Version")
                         .HasDatabaseName("ix_payment_plan_establishment_id_table_session_id_version");
-
-                    b.HasIndex("EstablishmentId", "TableSessionId", "LogicalPlanId", "Version")
-                        .IsUnique()
-                        .HasDatabaseName("ux_payment_plan_logical_version");
 
                     b.ToTable("payment_plan", "payments", t =>
                         {
@@ -6416,25 +6379,6 @@ namespace Appizza.Persistence.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Appizza.Modules.Payments.PaymentAttemptAllocation", b =>
-                {
-                    b.HasOne("Appizza.Modules.Payments.PaymentAttempt", "PaymentAttempt")
-                        .WithMany("Allocations")
-                        .HasForeignKey("PaymentAttemptId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Appizza.Modules.Payments.PaymentPlanAllocation", "PaymentPlanAllocation")
-                        .WithMany()
-                        .HasForeignKey("PaymentPlanAllocationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("PaymentAttempt");
-
-                    b.Navigation("PaymentPlanAllocation");
-                });
-
             modelBuilder.Entity("Appizza.Modules.Payments.PaymentPlan", b =>
                 {
                     b.HasOne("Appizza.Modules.Tables.TableSession", null)
@@ -6525,11 +6469,6 @@ namespace Appizza.Persistence.Migrations
                         .HasForeignKey("TableSessionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("Appizza.Modules.Payments.PaymentAttempt", b =>
-                {
-                    b.Navigation("Allocations");
                 });
 
             modelBuilder.Entity("Appizza.Modules.Payments.PaymentPlan", b =>

@@ -2154,7 +2154,7 @@ resolution text nullable
 
 # 12. Schema `payments`
 
-## 12.1 `payments.payment_participant`
+## 12.1 `payments.payment_participant` (reservado; fora do MVP atual)
 
 ```text
 id uuid PK
@@ -2182,19 +2182,19 @@ updated_at timestamptz not null
 version bigint not null
 ```
 
-### Modos
+### Modos (representação persistente)
 
 ```text
 total
-participants
-items
-amount
 equal_split
+by_participant (reservado, fora do MVP)
+by_item
+custom_amount
 ```
 
 ---
 
-## 12.3 `payments.payment_plan_participant`
+## 12.3 `payments.payment_plan_participant` (reservado; fora do MVP atual)
 
 ```text
 id uuid PK

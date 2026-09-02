@@ -12,6 +12,12 @@
 9. Reporting
 10. Hardening
 
+## Estado certificado pós-Fase 6
+
+Fase 6 — Promotions + Communications: **concluída e certificada em 2026-08-24**. Promotions, Communications, Operations, Table.Core, Table Device, realtime/reconnect, API full 302/302, builds e regressões foram aprovados.
+
+Fase 7 — Closing + Payments + SoftPOS: **OPEN**. Fase 7.0 — Contract & Product Decisions: **concluída em 2026-08-24**. Fase 7.2 — Closing + authoritative balance: **concluída e certificada**. Fase 7.3 — Contract Reconciliation: **concluída**. 7.3.1 PaymentPlan command/query + allocations aguarda implementação; 7.3.2 PaymentAttempt lifecycle; 7.3.3 providers/Worker; 7.4 Operations + Table UX; 7.5 Refund + final certification.
+
 Cada fase deve terminar compilável, testada e documentada.
 
 ## Fase 0 — Fundação

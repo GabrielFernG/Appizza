@@ -302,6 +302,7 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
 
     public AppizzaDbContext CreateDbContext() => new(new DbContextOptionsBuilder<AppizzaDbContext>()
         .UseNpgsql(ConnectionString, options => options.MigrationsHistoryTable("__ef_migrations_history", "integration")).Options);
+    internal PaymentAttemptLifecycleService CreatePaymentLifecycleService() => _factory!.Services.GetRequiredService<PaymentAttemptLifecycleService>();
 
     public TestPhase4NotificationPublisher Notifications => _factory!.Services.GetRequiredService<TestPhase4NotificationPublisher>();
     public TestPhase4OrderingHook OrderingHook => _factory!.Services.GetRequiredService<TestPhase4OrderingHook>();
@@ -330,7 +331,7 @@ public sealed class Phase1ApiFixture : IAsyncLifetime
         var tables = Enumerable.Range(1, tableCount).Select(index => new DiningTable { Id = Guid.NewGuid(), EstablishmentId = establishment.Id, Name = $"Mesa {index}", InternalCode = $"M{index}", CreatedAt = now, UpdatedAt = now }).ToArray();
         db.AddRange(tables);
         var permissions = new List<Permission>();
-        foreach (var code in Phase1Permissions.All.Concat(Phase2Permissions.All).Concat(Appizza.Modules.Kitchen.Phase4KitchenPermissions.All).Concat(Appizza.Modules.Ordering.Phase5CancellationPermissions.All).Concat(Appizza.Modules.Promotions.Phase6PromotionPermissions.All).Concat(Appizza.Modules.Communications.CommunicationPermissions.All))
+        foreach (var code in Phase1Permissions.All.Concat(Phase2Permissions.All).Concat(Appizza.Modules.Kitchen.Phase4KitchenPermissions.All).Concat(Appizza.Modules.Ordering.Phase5CancellationPermissions.All).Concat(Appizza.Modules.Promotions.Phase6PromotionPermissions.All).Concat(Appizza.Modules.Communications.CommunicationPermissions.All).Concat(Appizza.Modules.Payments.PaymentPermissions.All))
         {
             var permission = await db.Set<Permission>().SingleOrDefaultAsync(x => x.Code == code) ?? new Permission { Id = Guid.NewGuid(), Code = code, Module = code.Split('.')[0], Name = code };
             if (db.Entry(permission).State == EntityState.Detached) db.Add(permission);

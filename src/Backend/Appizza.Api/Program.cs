@@ -78,6 +78,8 @@ builder.Services.AddAppizzaTelemetry(builder.Configuration, "Appizza.Api");
 
 var connectionString = builder.Configuration.GetConnectionString("Appizza")
     ?? throw new InvalidOperationException("ConnectionStrings:Appizza must be configured.");
+builder.Services.AddScoped<PaymentAttemptReservationService>();
+builder.Services.AddScoped<PaymentAttemptLifecycleService>();
 builder.Services.AddDbContext<AppizzaDbContext>(options =>
     options.UseNpgsql(connectionString, npgsql =>
         npgsql.MigrationsHistoryTable("__ef_migrations_history", "integration")));
@@ -137,6 +139,10 @@ app.MapPhase5CancellationEndpoints();
 app.MapPhase5ChangeEndpoints();
 app.MapPhase6PromotionEndpoints();
 app.MapPhase6CommunicationEndpoints();
+app.MapPhase7ClosingEndpoints();
+app.MapPhase7PaymentPlanEndpoints();
+app.MapPhase7PaymentAttemptEndpoints();
+app.MapPhase7PaymentLifecycleEndpoints();
 app.MapHub<Phase1Hub>("/hubs/v1/updates");
 
 app.Run();

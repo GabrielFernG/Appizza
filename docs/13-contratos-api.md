@@ -793,38 +793,43 @@ Cada item deve poder abrir o snapshot detalhado.
 
 ---
 
-# 14. Plano de pagamento e participantes
+# 14. Plano de pagamento
 
 ## POST `/api/v1/table-device/session/payment-plan`
 
-Modes:
-- total
-- participants
-- items
-- amount
-- equal_split
+Modos canônicos:
+- `total`
+- `equal_split`
+- `by_item`
+- `custom_amount`
 
-Request participants:
+Os valores `by_participant`, `participants`, `items` e `amount` não fazem parte do MVP e não são aceitos como `mode`.
+
+Requests canônicos adicionais:
 
 ```json
-{
-  "mode": "participants",
-  "participants": [
-    {
-      "localParticipantId": "p1",
-      "displayName": "Pessoa 1"
-    },
-    {
-      "localParticipantId": "p2",
-      "displayName": "Pessoa 2"
-    }
-  ]
-}
+{ "mode": "total" }
 ```
 
-Response cria participant IDs e plano persistido.
+```json
+{ "mode": "equal_split", "partCount": 3 }
+```
 
-Itens podem ser atribuídos a participantes.
+```json
+{ "mode": "by_item", "items": [{ "orderItemId": "uuid" }] }
+```
+
+```json
+{ "mode": "custom_amount", "amount": 25.00 }
+```
+
+`by_item` usa o valor autoritativo integral do OrderItem; `custom_amount` é uma única allocation parcial. O cliente não fornece preço, total ou saldo como autoridade.
+
+Response canônica inclui `planId`, `version`, `mode`, `allocations` (`allocationId`, `amount`, `stableOrder`) e totais autoritativos (`subtotalAmount`, `discountAmount`, `totalAmount`, `paidAmount`, `reservedAmount`, `outstandingAmount`, `availableToReserveAmount`).
+
+O endpoint exige `Idempotency-Key`. Mesma intenção faz replay; payload diferente retorna `409 IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST`. Coleções são canonicalizadas por UUID; `equal_split` inclui `partCount`; `custom_amount` inclui amount normalizado; `expectedVersion`, quando aplicável, integra a fingerprint.
+
+Não existe API pública de participantes no MVP. `items` permanece propriedade do request `by_item`, não um valor de `mode`.
 
 ---
 
@@ -1285,3 +1290,36 @@ Aplicação de promoção pertence à submissão autoritativa do Ordering; o cli
 ## Bloqueio de contrato — Promotions Fase 6
 
 Os endpoints administrativos propostos não podem ser implementados ainda: o request de criação precisa definir escopo de elegibilidade e semântica de `fixed_amount`. A ausência desses campos tornaria o contrato financeiro ambíguo. Table Device não terá endpoint de seleção/aplicação manual.
+## Contratos normativos da Fase 7
+
+Todas as rotas derivam establishment/tenant da credencial. Mutações exigem Idempotency-Key e, quando indicado, expectedVersion. Erros seguem ProblemDetails e errorCode.
+
+### Table Device
+
+| Método/rota | Auth | Version | Idempotência |
+|---|---|---:|---:|
+| `POST /api/v1/table-device/session/close` | device da sessão | sim | sim |
+| `POST /api/v1/table-device/session/payment-plan` | device da sessão | sim | sim |
+| `POST /api/v1/table-device/payments/attempts` | device da sessão | sim | sim |
+| `GET /api/v1/table-device/session/payments` | device da sessão | n/a | não |
+
+### Operations
+
+`GET /api/v1/operations/sessions/closing`, `GET /api/v1/operations/sessions/{id}/payments`, cancelamento/finalização de Closing, confirmação de cash, reconciliação, cancelamento de attempt e refund são endpoints normativos da Fase 7. Todos usam tenant da credencial, RBAC granular, expectedVersion quando mutáveis, Idempotency-Key e efeitos transacionais em Outbox.
+
+Nenhuma rota aceita total, saldo ou preço como autoridade do cliente.
+# Macro 7-A1 — PaymentAttempt (MVP)
+
+O fluxo financeiro segue `TableSession -> PaymentPlan -> PaymentPlanAllocation -> PaymentAttempt -> PaymentAttemptAllocation`.
+`PaymentAttempt` seleciona uma ou mais allocations físicas (`PaymentPlanAllocation.Id`); o servidor calcula `Amount` pela soma dos valores persistidos e cria a reserva em `ReservedAmount`. O tablet não envia preço autoritativo e não confirma settlement.
+
+`POST /api/v1/table-device/payments/attempts` exige `Idempotency-Key` (UUID) e recebe `paymentPlanId`, `tableSessionId`, `allocationIds` e `paymentMethod` (`cash`, `pix`, `credit` ou `debit`). Selectors são canonicalizados; ordem textual não altera a intenção e duplicados são inválidos. Chave repetida com a mesma intenção reproduz o attempt; intenção diferente retorna `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST` (409).
+
+O MVP não possui `PaymentParticipant`, `participantId`, allocation de participante ou modo público `by_participant`; colunas legadas nullable permanecem apenas por compatibilidade histórica. A permissão canônica para confirmação de dinheiro é `payments.confirm_cash` (confirmação será disponibilizada no A2). `Unknown` mantém a reserva.
+# Contratos implementados de PaymentAttempt (Macro 7-A2)
+
+`POST /api/v1/table-device/payments/attempts` requer Bearer token de dispositivo e `Idempotency-Key` UUID. O request usa `tableSessionId`, `paymentPlanId`, `allocationIds` e `paymentMethod` (`cash`, `pix`, `credit`, `debit`, `soft_pos`). O servidor valida tenant, binding, sessão, plano físico e allocations; calcula o valor autoritativo e cria a reserva. Chave repetida com intenção diferente retorna `409` e `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST`.
+
+`POST /api/v1/payments/attempts/{attemptId}/confirm-cash` requer funcionário ativo, tenant correto, permissão `payments.confirm_cash` e `Idempotency-Key`. Somente attempts Cash podem ser confirmados; a confirmação aprova atomicamente e repetições são idempotentes. Tokens de dispositivo, recursos estrangeiros e estados inválidos são rejeitados sem mutação financeira.
+
+Participantes e `by_participant` não fazem parte do contrato público atual. Provedores Pix/cartão, callbacks, reconciliação, refunds e UI pertencem a fases posteriores.

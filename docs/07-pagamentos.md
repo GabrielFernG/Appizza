@@ -4,10 +4,9 @@ Pagamento ocorre no fechamento.
 
 Divisões MVP:
 - total;
-- participantes;
+- igualitária;
 - itens;
-- valor;
-- igualitária.
+- valor personalizado.
 
 Métodos MVP:
 - Pix;
@@ -27,3 +26,65 @@ Dinheiro depende de funcionário.
 Estorno não apaga pagamento.
 
 SoftPOS usa abstração de provedor e depende de hardware/provedor compatível.
+
+## Contrato normativo da Fase 7
+
+### Closing
+
+`TableSession` usa `open`, `closing`, `awaiting_payment`, `partially_paid`, `paid` e `closed`.
+
+- `open -> closing` é permitido somente em `open`.
+- `closing -> awaiting_payment` ocorre atomicamente quando não há operações impeditivas e os totais foram recalculados.
+- `closing -> open` e `awaiting_payment -> open` exigem `PaidAmount == 0`, `ReservedAmount == 0` e nenhuma PaymentAttempt ativa ou inconclusiva.
+- Tentativas `Declined`, `Expired` e `Cancelled` não impedem reabertura.
+- Operações impeditivas bloqueiam Closing com `SESSION_HAS_PENDING_OPERATIONS`; não há espera assíncrona implícita.
+- `partially_paid` ocorre após pagamento aprovado com saldo pendente; `paid` ocorre somente quando `OutstandingAmount == 0`.
+- `closed` é encerramento operacional explícito após `paid`; cleaning/release permanece etapa posterior.
+- Novos pedidos são permitidos apenas em `open`; pagamentos em `awaiting_payment` e `partially_paid`.
+
+### Invariantes financeiras
+
+`Ordering` é autoridade sobre pedidos e preços; `Payments` sobre tentativas, reservas e refunds; `TableSession` persiste totais.
+
+```text
+OutstandingAmount = max(0, TotalAmount - PaidAmount)
+AvailableToReserveAmount = max(0, TotalAmount - PaidAmount - ReservedAmount)
+```
+
+`ReservedAmount` nunca determina quitação. Valores financeiros não podem ser negativos. Refunds são históricos e separados:
+
+```text
+RefundableAmount = ApprovedAmount - EffectiveRefundedAmount
+```
+
+### PaymentPlan e divisão
+
+PaymentPlan é persistido com identidade lógica e versões históricas imutáveis. A representação JSON canônica do MVP é `total`, `equal_split`, `by_item` e `custom_amount`; `by_participant`, `participants`, `items` e `amount` não são modos públicos do MVP.
+
+O schema atual ainda não possui `LogicalPlanId`; a evolução mínima da 7.3.1 deverá adicioná-lo sem reescrever a migration histórica, preservando a identidade física de cada versão.
+
+`total` não recebe valor financeiro; `equal_split` recebe `partCount` inteiro positivo; `by_item` referencia `OrderItem.Id` inteiro, sem divisão por unidade nesta fase; `custom_amount` representa uma única allocation parcial positiva, limitada a `AvailableToReserveAmount`. Ordering permanece autoridade sobre pedidos, itens e preços. Divisões usam `decimal`, ordem canônica estável e residual determinístico: `100,00 / 3 = 33,34; 33,33; 33,33`.
+
+### PaymentAttempt e Unknown
+
+Estados: `Created`, `AwaitingCustomerAction`, `Processing`, `Approved`, `Declined`, `Expired`, `Cancelled` e `Unknown`. `Unknown` é não terminal, mantém reserva, bloqueia cobrança equivalente e exige reconciliação conclusiva; nunca significa `Declined`.
+
+Tentativas aprovadas não são apagadas nem reescritas. Refund é operação separada, suporta refunds parciais/múltiplos até o limite aprovado, exige permission, idempotência e auditoria, inclusive após `closed`, sem reabrir a sessão.
+
+### Idempotência, providers e offline
+
+Mutações financeiras exigem `Idempotency-Key`; mesma chave e payload reproduzem status/body, payload diferente retorna `409 IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST`. Callbacks usam identidade idempotente do provider.
+
+Pix e SoftPOS são provider-agnostic. A implementação inicial usa Fake/Test Provider. A abstração SoftPOS expõe `DiscoverCapabilities`, `StartPayment`, `GetStatus`, `CancelPayment` e `ReconcilePayment`; nenhum SDK ou provider real é selecionado.
+
+Nenhuma mutação financeira é executada ou enfileirada silenciosamente offline. O cliente pode exibir último read model marcado como stale; reconnect exige GET. Retry explícito pode reutilizar a chave persistida da intenção original.
+### PaymentAttempt e reserva (Macro 7-A1)
+
+Uma tentativa referencia a versão física do `PaymentPlan` e suas `PaymentPlanAllocation`s por meio de `PaymentAttemptAllocation`, preservando ownership histórico. A criação deriva o valor no servidor, soma as allocations selecionadas e incrementa atomicamente `ReservedAmount`; `PaidAmount` e o estado da sessão não mudam. `Unknown` mantém a reserva. A confirmação confiável de cash usa `payments.confirm_cash` e pertence ao A2. Não há identidade financeira de participante no MVP.
+### Implementação atual A2
+
+`PaymentAttempt` referencia o `PaymentPlan.Id` físico e possui ownership por `PaymentAttemptAllocation`. O cliente envia `tableSessionId`, `paymentPlanId`, `allocationIds` e `paymentMethod`; o valor é calculado no servidor pela soma das allocations persistidas. `ReservedAmount` é compromisso, não pagamento.
+
+Estados `Created`, `AwaitingCustomerAction`, `Processing` e `Unknown` mantêm reserva. `Approved` liquida; `Declined`, `Cancelled` e `Expired` liberam a reserva. A confirmação Cash usa `POST /api/v1/payments/attempts/{attemptId}/confirm-cash`, requer funcionário ativo e `payments.confirm_cash`, e é atômica/idempotente.
+
+Transições comprometidas geram Outbox e auditoria versionados. Replays e concorrência não duplicam observabilidade. Provedores, callbacks, reconciliação, refunds e participantes permanecem fora do Macro 7-A.
