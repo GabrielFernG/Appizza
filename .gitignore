@@ -4,6 +4,7 @@
 .idea/
 .vscode/
 .dotnet-home/
+.dotnet-cli-home/
 .nuget-packages/
 .env
 *.user
