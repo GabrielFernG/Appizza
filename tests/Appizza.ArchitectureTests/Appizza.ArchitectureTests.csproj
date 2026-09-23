@@ -35,6 +35,10 @@
     <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Promotions\Appizza.Modules.Promotions.csproj" />
     <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Reporting\Appizza.Modules.Reporting.csproj" />
     <ProjectReference Include="..\..\src\Modules\Appizza.Modules.Tables\Appizza.Modules.Tables.csproj" />
+    <ProjectReference Include="..\..\src\Appizza.Payments.Application\Appizza.Payments.Application.csproj" />
+    <ProjectReference Include="..\..\src\Backend\Appizza.Api\Appizza.Api.csproj" />
+    <ProjectReference Include="..\..\src\Backend\Appizza.Worker\Appizza.Worker.csproj" />
+    <ProjectReference Include="..\..\src\BuildingBlocks\Appizza.Persistence\Appizza.Persistence.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Appizza.Modules.Payments;
 using Appizza.Persistence;
+using Appizza.Payments.Application;
 using Microsoft.EntityFrameworkCore;
 
 namespace Appizza.Api;

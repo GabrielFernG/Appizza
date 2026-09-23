@@ -36,7 +36,9 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
     public DbSet<PaymentPlan> PaymentPlans => Set<PaymentPlan>();
     public DbSet<PaymentPlanAllocation> PaymentPlanAllocations => Set<PaymentPlanAllocation>();
     public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
+    public DbSet<PaymentProviderExecution> PaymentProviderExecutions => Set<PaymentProviderExecution>();
     public DbSet<Refund> Refunds => Set<Refund>();
+    public DbSet<RefundProviderExecution> RefundProviderExecutions => Set<RefundProviderExecution>();
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -88,6 +90,7 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
         modelBuilder.Entity<PaymentPlan>().HasOne<TableSession>().WithMany().HasForeignKey(x => x.TableSessionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PaymentAttempt>().HasOne<TableSession>().WithMany().HasForeignKey(x => x.TableSessionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PaymentAttempt>().HasOne<PaymentPlan>().WithMany().HasForeignKey(x => x.PaymentPlanId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PaymentProviderExecution>().HasOne<PaymentAttempt>().WithMany().HasForeignKey(x => x.PaymentAttemptId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<Refund>().HasOne<PaymentAttempt>().WithMany().HasForeignKey(x => x.PaymentAttemptId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<TableSession>().HasOne<DiningTable>().WithMany().HasForeignKey(x => x.DiningTableId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<SessionCustomerIdentification>().HasOne<TableSession>().WithMany().HasForeignKey(x => x.TableSessionId).OnDelete(DeleteBehavior.Restrict);

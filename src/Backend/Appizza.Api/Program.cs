@@ -15,6 +15,7 @@ using Appizza.Modules.Promotions;
 using Appizza.Modules.Reporting;
 using Appizza.Modules.Tables;
 using Appizza.Persistence;
+using Appizza.Payments.Application;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -56,6 +57,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
     };
 });
 builder.Services.AddAuthorization();
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(options => options.AddPolicy("AppizzaApi", policy =>
+{
+    if (corsOrigins.Length > 0) policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod();
+}));
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<IPhase4NotificationPublisher, Phase4SignalRNotificationPublisher>();
 builder.Services.AddSingleton<IPhase4OrderingHook, Phase4OrderingHook>();
@@ -79,11 +85,13 @@ builder.Services.AddAppizzaTelemetry(builder.Configuration, "Appizza.Api");
 var connectionString = builder.Configuration.GetConnectionString("Appizza")
     ?? throw new InvalidOperationException("ConnectionStrings:Appizza must be configured.");
 builder.Services.AddScoped<PaymentAttemptReservationService>();
-builder.Services.AddScoped<PaymentAttemptLifecycleService>();
+builder.Services.AddScoped<RefundLifecycleService>();
 builder.Services.AddSingleton<IPaymentProvider, FakePaymentProvider>();
+if (builder.Configuration.GetValue<bool>("AppizzaE2E")) builder.Services.AddSingleton<IPaymentProvider>(new E2ERefundProvider(connectionString));
 builder.Services.AddDbContext<AppizzaDbContext>(options =>
     options.UseNpgsql(connectionString, npgsql =>
         npgsql.MigrationsHistoryTable("__ef_migrations_history", "integration")));
+builder.Services.AddPaymentsApplication();
 
 var storageOptions = builder.Configuration
     .GetSection(ObjectStorageOptions.SectionName)
@@ -103,6 +111,18 @@ builder.Services.AddSingleton<IReadOnlyCollection<IAppizzaModule>>(modules);
 
 var app = builder.Build();
 
+if (builder.Configuration.GetValue<bool>("AppizzaE2E"))
+{
+    app.MapPost("/api/v1/e2e/provider-control/{provider}/release", async (string provider, CancellationToken ct) =>
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(connectionString);
+        await connection.OpenAsync(ct);
+        await using var command = new Npgsql.NpgsqlCommand("update e2e_control.refund_provider_scenario set released = true where provider = $1", connection);
+        command.Parameters.AddWithValue(provider);
+        return Results.Ok(new { provider, released = (await command.ExecuteNonQueryAsync(ct)) == 1 });
+    });
+}
+
 if (app.Environment.IsDevelopment())
 {
     await Phase1DevelopmentSeeder.SeedAsync(app.Services, app.Configuration, app.Lifetime.ApplicationStopping);
@@ -111,6 +131,7 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseExceptionHandler();
 app.UseRateLimiter();
+app.UseCors("AppizzaApi");
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -144,6 +165,9 @@ app.MapPhase7ClosingEndpoints();
 app.MapPhase7PaymentPlanEndpoints();
 app.MapPhase7PaymentAttemptEndpoints();
 app.MapPhase7PaymentLifecycleEndpoints();
+app.MapPhase7RefundEndpoints();
+app.MapOperationsPaymentDetailsEndpoints();
+app.MapOperationsClosingListEndpoints();
 app.MapHub<Phase1Hub>("/hubs/v1/updates");
 
 app.Run();

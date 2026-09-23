@@ -21,6 +21,7 @@ public static class Phase7ClosingEndpoints
         device.MapGet("/balance", DeviceBalance);
         var operations = app.MapGroup("/api/v1/operations/sessions").RequireAuthorization();
         operations.MapPost("/{id:guid}/closing/cancel", CancelClosing);
+        operations.MapPost("/{id:guid}/closing/finalize", FinalizeClosing);
         operations.MapGet("/{id:guid}/balance", OperationsBalance);
         return app;
     }
@@ -66,6 +67,54 @@ public static class Phase7ClosingEndpoints
         session.Status = "open"; session.UpdatedAt = DateTimeOffset.UtcNow; AddEvent(db, tenant, "session-closing-cancelled.v1", session, principal.RequiredGuid("sub"), session.UpdatedAt); AddAudit(db, tenant, "closing.cancel", session.Id, principal.RequiredGuid("sub"), null, http.HttpContext.TraceIdentifier, session.UpdatedAt, request.Reason); var payload = JsonSerializer.Serialize(Balance(session)); db.Add(new IdempotencyRecord { Id = Guid.NewGuid(), EstablishmentId = tenant, OperationType = "session.closing.cancel", IdempotencyKey = key.ToString(), RequestHash = hash, ResponseStatus = 200, ResponsePayload = payload, CreatedAt = session.UpdatedAt }); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return Results.Content(payload, "application/json");
     }
 
+    private static async Task<IResult> FinalizeClosing(Guid id, FinalizeClosingRequest request, HttpRequest http, ClaimsPrincipal principal, AppizzaDbContext db, CancellationToken ct)
+    {
+        if (!principal.IsTokenType("user")) return Problem(403, "INVALID_TOKEN_TYPE");
+        var tenant = principal.RequiredGuid("establishment_id");
+        var user = principal.RequiredGuid("sub");
+        var permissions = await PermissionResolver.ResolveAsync(db, user, DateTimeOffset.UtcNow, ct);
+        if (!permissions.Contains("closing.finalize")) return Problem(403, "INSUFFICIENT_PERMISSION");
+        if (!Guid.TryParse(http.Headers["Idempotency-Key"], out var key)) return Problem(400, "IDEMPOTENCY_KEY_REQUIRED");
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await Lock(db, $"{tenant:N}|closing|{id:N}", ct);
+        var hash = JsonSerializer.Serialize(new { id, request.ExpectedVersion });
+        var existing = await db.IdempotencyRecords.SingleOrDefaultAsync(x => x.EstablishmentId == tenant && x.OperationType == "session.closing.finalize" && x.IdempotencyKey == key.ToString(), ct);
+        if (existing is not null)
+        {
+            if (existing.RequestHash != hash) return Problem(409, "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST");
+            await tx.CommitAsync(ct);
+            return Results.Content(existing.ResponsePayload!, "application/json", statusCode: existing.ResponseStatus ?? 200);
+        }
+
+        var session = await db.Set<TableSession>().FromSqlInterpolated($"select * from tables.table_session where id = {id} and establishment_id = {tenant} for update").SingleOrDefaultAsync(ct);
+        if (session is null) return Results.NotFound();
+        if (session.Version != request.ExpectedVersion) return Problem(409, "CONCURRENCY_CONFLICT");
+        if (session.Status != "paid") return Problem(409, "SESSION_INVALID_STATE");
+        if (session.RemainingAmount != 0m || session.ReservedAmount != 0m) return Problem(409, "CLOSING_FINANCIAL_STATE_INCOMPLETE");
+
+        var blockingAttempts = new[] { PaymentAttemptStatus.Created, PaymentAttemptStatus.AwaitingCustomerAction, PaymentAttemptStatus.Processing, PaymentAttemptStatus.Unknown };
+        if (await db.Set<PaymentAttempt>().AnyAsync(x => x.TableSessionId == id && x.EstablishmentId == tenant && blockingAttempts.Contains(x.Status), ct)) return Problem(409, "CLOSING_PAYMENT_PROCESSING_INCOMPLETE");
+        var blockingExecutions = new[] { PaymentProviderExecutionStatus.Pending, PaymentProviderExecutionStatus.Processing, PaymentProviderExecutionStatus.AwaitingCustomerAction, PaymentProviderExecutionStatus.Unknown };
+        if (await (from execution in db.Set<PaymentProviderExecution>()
+                   join attempt in db.Set<PaymentAttempt>() on execution.PaymentAttemptId equals attempt.Id
+                   where execution.EstablishmentId == tenant && attempt.EstablishmentId == tenant && attempt.TableSessionId == id
+                         && (blockingExecutions.Contains(execution.Status) || execution.ReconciliationRequired)
+                   select execution.Id).AnyAsync(ct)) return Problem(409, "CLOSING_PAYMENT_PROCESSING_INCOMPLETE");
+
+        var now = DateTimeOffset.UtcNow;
+        session.Status = "closed";
+        session.ClosedAt = now;
+        session.UpdatedAt = now;
+        AddEvent(db, tenant, "session-closing-finalized.v1", session, user, now);
+        AddAudit(db, tenant, "closing.finalize", session.Id, user, null, http.HttpContext.TraceIdentifier, now, null);
+        var payload = JsonSerializer.Serialize(Balance(session));
+        db.Add(new IdempotencyRecord { Id = Guid.NewGuid(), EstablishmentId = tenant, OperationType = "session.closing.finalize", IdempotencyKey = key.ToString(), RequestHash = hash, ResponseStatus = 200, ResponsePayload = payload, CreatedAt = now });
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return Results.Content(payload, "application/json");
+    }
+
     private static async Task<IResult> DeviceBalance(ClaimsPrincipal p, AppizzaDbContext db, CancellationToken ct) { if (!p.IsTokenType("device")) return Problem(403, "INVALID_TOKEN_TYPE"); var tenant = p.RequiredGuid("establishment_id"); var device = p.RequiredGuid("sub"); var currentDevice = await db.Set<Device>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == device && x.EstablishmentId == tenant, ct); if (currentDevice is null) return Results.NotFound(); if (currentDevice.Status == "blocked") return Problem(403, "DEVICE_BLOCKED"); if (currentDevice.Status != "active" || currentDevice.CredentialVersion.ToString(System.Globalization.CultureInfo.InvariantCulture) != p.FindFirstValue("credential_version")) return Problem(403, "DEVICE_CREDENTIAL_REVOKED"); var binding = await db.Set<DeviceTableBinding>().AsNoTracking().SingleOrDefaultAsync(x => x.DeviceId == device && x.UnboundAt == null, ct); if (binding is null) return Results.NotFound(); var s = await db.Set<TableSession>().AsNoTracking().SingleOrDefaultAsync(x => x.DiningTableId == binding.DiningTableId && x.EstablishmentId == tenant && new[] { "open", "closing", "awaiting_payment", "partially_paid", "paid", "closed" }.Contains(x.Status), ct); return s is null ? Results.NotFound() : Results.Ok(Balance(s)); }
     private static async Task<IResult> OperationsBalance(Guid id, ClaimsPrincipal p, AppizzaDbContext db, CancellationToken ct) { if (!p.IsTokenType("user")) return Problem(403, "INVALID_TOKEN_TYPE"); var tenant = p.RequiredGuid("establishment_id"); var perms = await PermissionResolver.ResolveAsync(db, p.RequiredGuid("sub"), DateTimeOffset.UtcNow, ct); if (!perms.Contains("closing.view")) return Problem(403, "INSUFFICIENT_PERMISSION"); var s = await db.Set<TableSession>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.EstablishmentId == tenant, ct); return s is null ? Results.NotFound() : Results.Ok(Balance(s)); }
     private static object Balance(TableSession s) => new { sessionId = s.Id, status = s.Status, version = s.Version, subtotalAmount = s.SubtotalAmount, discountAmount = s.DiscountAmount, adjustmentAmount = s.AdjustmentAmount, totalAmount = s.TotalAmount, paidAmount = s.PaidAmount, reservedAmount = s.ReservedAmount, outstandingAmount = Math.Max(0m, s.TotalAmount - s.PaidAmount), availableToReserveAmount = Math.Max(0m, s.TotalAmount - s.PaidAmount - s.ReservedAmount), closingStartedAt = s.ClosingStartedAt, paidAt = s.PaidAt, closedAt = s.ClosedAt };
@@ -78,3 +127,4 @@ public static class Phase7ClosingEndpoints
 
 public sealed record ClosingRequest(Guid SessionId, long ExpectedVersion);
 public sealed record CancelClosingRequest(long ExpectedVersion, string Reason);
+public sealed record FinalizeClosingRequest(long ExpectedVersion);

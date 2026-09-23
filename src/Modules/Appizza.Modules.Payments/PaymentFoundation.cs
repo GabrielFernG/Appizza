@@ -16,6 +16,8 @@ public enum PaymentPlanMode { Total, EqualSplit, ByParticipant, ByItem, CustomAm
 public enum PaymentAttemptStatus { Created, AwaitingCustomerAction, Processing, Approved, Declined, Expired, Cancelled, Unknown }
 public enum PaymentMethod { Pix, Cash, Credit, Debit, SoftPos }
 public enum RefundStatus { Created, Processing, Completed, Failed, Cancelled }
+public enum PaymentProviderExecutionStatus { Pending, Processing, AwaitingCustomerAction, Unknown, OutcomeObserved, Completed, TerminalFailure }
+public enum RefundProviderExecutionStatus { Pending, Processing, Unknown, OutcomeObserved, Completed, TerminalFailure }
 
 public sealed class PaymentPlan : IVersionedEntity
 {
@@ -77,6 +79,27 @@ public sealed class PaymentAttemptAllocation
     public PaymentPlanAllocation PaymentPlanAllocation { get; set; } = null!;
 }
 
+public sealed class PaymentProviderExecution : IVersionedEntity
+{
+    public Guid Id { get; set; }
+    public Guid EstablishmentId { get; set; }
+    public Guid PaymentAttemptId { get; set; }
+    public string Provider { get; set; } = null!;
+    public string ProviderIdempotencyKey { get; set; } = null!;
+    public PaymentProviderExecutionStatus Status { get; set; } = PaymentProviderExecutionStatus.Pending;
+    public string? NormalizedOutcome { get; set; }
+    public string? ProviderReference { get; set; }
+    public bool LifecycleApplied { get; set; }
+    public bool ReconciliationRequired { get; set; }
+    public int AttemptCount { get; set; }
+    public string? LastErrorClassification { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? ClaimedUntil { get; set; }
+    public Guid? ClaimedBy { get; set; }
+    public long Version { get; set; }
+}
+
 public sealed class Refund : IVersionedEntity
 {
     public Guid Id { get; set; }
@@ -92,9 +115,42 @@ public sealed class Refund : IVersionedEntity
     public long Version { get; set; }
 }
 
+public sealed class RefundProviderExecution : IVersionedEntity
+{
+    public Guid Id { get; set; }
+    public Guid EstablishmentId { get; set; }
+    public Guid RefundId { get; set; }
+    public string Provider { get; set; } = null!;
+    public string ProviderIdempotencyKey { get; set; } = null!;
+    public RefundProviderExecutionStatus Status { get; set; } = RefundProviderExecutionStatus.Pending;
+    public string? NormalizedOutcome { get; set; }
+    public string? ProviderReference { get; set; }
+    public bool ReconciliationRequired { get; set; }
+    public string? LastErrorClassification { get; set; }
+    public int AttemptCount { get; set; }
+    public Guid? ClaimedBy { get; set; }
+    public DateTimeOffset? ClaimedUntil { get; set; }
+    public bool LifecycleApplied { get; set; }
+    public long Version { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
 public sealed record PaymentProviderCapabilities(IReadOnlySet<string> Methods);
 public sealed record StartPaymentRequest(Guid AttemptId, decimal Amount, PaymentMethod Method, string? ProviderReference = null);
 public sealed record PaymentProviderStatus(string Status, string? ProviderReference = null);
+public sealed record PaymentProviderLookupRequest(Guid AttemptId, string ProviderIdempotencyKey, string? ProviderReference, PaymentMethod Method, decimal Amount);
+public sealed record PaymentProviderLookupResult(string Status, string? ProviderReference = null);
+public sealed record RefundProviderRequest(Guid RefundId, string ProviderIdempotencyKey, PaymentMethod Method, decimal Amount, string? ProviderReference = null);
+public sealed record RefundProviderLookupRequest(Guid RefundId, string ProviderIdempotencyKey, string? ProviderReference, PaymentMethod Method, decimal Amount);
+public sealed record RefundProviderResult(string Status, string? ProviderReference = null);
+public enum PaymentRecoveryClassification { SafeToRetry, AmbiguousRequiresReconciliation, TerminalNoRetry }
+public sealed class PaymentProviderOperationException : Exception
+{
+    public PaymentProviderOperationException(PaymentRecoveryClassification classification, string operation, Exception? innerException = null)
+        : base(operation, innerException) => Classification = classification;
+    public PaymentRecoveryClassification Classification { get; }
+}
 
 public interface IPaymentProvider
 {
@@ -103,23 +159,32 @@ public interface IPaymentProvider
     Task<PaymentProviderStatus> GetStatusAsync(string providerReference, CancellationToken cancellationToken = default);
     Task<PaymentProviderStatus> CancelPaymentAsync(string providerReference, CancellationToken cancellationToken = default);
     Task<PaymentProviderStatus> ReconcilePaymentAsync(string providerReference, CancellationToken cancellationToken = default);
+    Task<PaymentProviderLookupResult> LookupPaymentAsync(PaymentProviderLookupRequest request, CancellationToken cancellationToken = default);
+    Task<RefundProviderResult> RefundAsync(RefundProviderRequest request, CancellationToken cancellationToken = default) => Task.FromException<RefundProviderResult>(new NotSupportedException("REFUND_PROVIDER_NOT_IMPLEMENTED"));
+    Task<RefundProviderResult> LookupRefundAsync(RefundProviderLookupRequest request, CancellationToken cancellationToken = default) => Task.FromException<RefundProviderResult>(new NotSupportedException("REFUND_LOOKUP_NOT_IMPLEMENTED"));
 }
 
 /// <summary>Deterministic provider used only by development/test composition.</summary>
 public sealed class FakePaymentProvider : IPaymentProvider
 {
+    private readonly Func<StartPaymentRequest, PaymentProviderStatus>? _startBehavior;
+
+    public FakePaymentProvider(Func<StartPaymentRequest, PaymentProviderStatus>? startBehavior = null) => _startBehavior = startBehavior;
+
     public Task<PaymentProviderCapabilities> DiscoverCapabilitiesAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(new PaymentProviderCapabilities(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "pix", "credit", "debit" }));
 
     public Task<PaymentProviderStatus> StartPaymentAsync(StartPaymentRequest request, CancellationToken cancellationToken = default)
     {
         if (request.Method == PaymentMethod.Cash) throw new InvalidOperationException("CASH_DOES_NOT_USE_PROVIDER");
+        if (_startBehavior is not null) return Task.FromResult(_startBehavior(request));
         return Task.FromResult(new PaymentProviderStatus("processing", request.ProviderReference ?? $"fake:{request.AttemptId:N}"));
     }
 
     public Task<PaymentProviderStatus> GetStatusAsync(string providerReference, CancellationToken cancellationToken = default) => Task.FromResult(new PaymentProviderStatus("unknown", providerReference));
     public Task<PaymentProviderStatus> CancelPaymentAsync(string providerReference, CancellationToken cancellationToken = default) => Task.FromResult(new PaymentProviderStatus("declined", providerReference));
     public Task<PaymentProviderStatus> ReconcilePaymentAsync(string providerReference, CancellationToken cancellationToken = default) => Task.FromResult(new PaymentProviderStatus("unknown", providerReference));
+    public Task<PaymentProviderLookupResult> LookupPaymentAsync(PaymentProviderLookupRequest request, CancellationToken cancellationToken = default) => Task.FromResult(new PaymentProviderLookupResult("unknown", request.ProviderReference));
 }
 
 public static class PaymentAllocationCalculator

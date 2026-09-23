@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [vue(), vuetify({ autoImport: true })],
   test: {
     environment: 'jsdom',
+    exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
     server: {
       deps: {
         inline: ['vuetify'],

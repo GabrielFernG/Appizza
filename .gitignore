@@ -15,6 +15,12 @@ test-logs/
 coverage/
 src/Web/Appizza.Operations/node_modules/
 src/Web/Appizza.Operations/dist/
+**/playwright-report/
+**/test-results/
+*.trx
+*.coverage
+.DS_Store
+Thumbs.db
 *.db
 *.db-shm
 *.db-wal

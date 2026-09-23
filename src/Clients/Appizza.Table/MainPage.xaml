@@ -15,6 +15,7 @@
             <Picker x:Name="Tables" Title="Selecione a mesa" ItemDisplayBinding="{Binding Name}" />
             <Button Text="Vincular tablet" Clicked="OnBind" />
             <Button Text="Abrir ou restaurar sessão" Clicked="OnOpenSession" />
+            <Button Text="Pagamentos da sessão" Clicked="OnOpenPayments" />
             <Label x:Name="Status" Text="Aguardando configuração." />
         </VerticalStackLayout>
     </ScrollView>

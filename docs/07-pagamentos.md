@@ -88,3 +88,66 @@ Uma tentativa referencia a versão física do `PaymentPlan` e suas `PaymentPlanA
 Estados `Created`, `AwaitingCustomerAction`, `Processing` e `Unknown` mantêm reserva. `Approved` liquida; `Declined`, `Cancelled` e `Expired` liberam a reserva. A confirmação Cash usa `POST /api/v1/payments/attempts/{attemptId}/confirm-cash`, requer funcionário ativo e `payments.confirm_cash`, e é atômica/idempotente.
 
 Transições comprometidas geram Outbox e auditoria versionados. Replays e concorrência não duplicam observabilidade. Provedores, callbacks, reconciliação, refunds e participantes permanecem fora do Macro 7-A.
+
+### Finalização operacional do fechamento
+
+Operations pode finalizar uma sessão financeiramente liquidada por meio do comando
+`POST /api/v1/operations/sessions/{sessionId}/closing/finalize`, com a permissão
+`closing.finalize`. O estabelecimento é sempre derivado da claim autenticada
+`establishment_id`; o cliente não envia `establishmentId`.
+
+O request contém `{ expectedVersion }` e exige `Idempotency-Key`. A transição
+aceita exclusivamente `TableSession.Status == paid` e exige, na mesma transação,
+`outstandingAmount == 0`, `reservedAmount == 0`, nenhum `PaymentAttempt` em
+`Created`, `AwaitingCustomerAction`, `Processing` ou `Unknown`, nenhum
+`PaymentProviderExecution` em `Pending`, `Processing`, `AwaitingCustomerAction`
+ou `Unknown`, e nenhuma execução com `ReconciliationRequired == true`.
+Nenhuma consulta de rede ao provedor é executada.
+
+Em sucesso, `paid -> closed`, a versão avança segundo a convenção de concorrência,
+e são gravados um audit `closing.finalize` e o evento Outbox
+`session-closing-finalized.v1`. PaymentPlan, allocations, attempts, executions,
+claims e totais financeiros permanecem imutáveis. A DiningTable também não é
+alterada; sua liberação continua pertencendo ao fluxo existente de limpeza de
+mesa após a sessão fechada.
+
+O comando retorna a representação autoritativa atualizada (HTTP 200). Replays
+idênticos retornam o resultado persistido sem reexecutar efeitos; chave reutilizada
+com request canônico diferente retorna conflito. Versão obsoleta, estado inválido,
+saldo/reserva não liquidados ou processamento/reconciliação pendente retornam
+ProblemDetails HTTP 409 com os códigos definidos no contrato da API.
+### Refund — contrato normativo da Fase 7.5
+
+Refund é um registro histórico append-only ligado ao `PaymentAttempt.Id`. O
+PaymentAttempt original permanece `Approved`, com Amount, status, execução do
+provider e histórico imutáveis. Refund não altera TableSession, PaidAmount,
+ReservedAmount, pedidos ou DiningTable, e não reabre uma sessão `closed`.
+
+```text
+CompletedRefundedAmount = SUM(Refund.Amount WHERE Status == Completed)
+InFlightRefundAmount = SUM(Refund.Amount WHERE Status IN (Created, Processing))
+AvailableToRefundAmount = max(0, PaymentAttempt.Amount
+  - CompletedRefundedAmount - InFlightRefundAmount)
+```
+
+Somente `Completed` produz efeito financeiro. `Created` e `Processing` reservam
+capacidade; `Failed` e `Cancelled` não contam. Refunds totais, parciais e
+múltiplos são permitidos até o limite disponível, inclusive após o fechamento.
+
+Refund Cash nasce `Created` e exige confirmação explícita posterior por
+funcionário com `payments.refund`; a confirmação `Created -> Completed` não usa
+provider, não altera a TableSession e emite audit/Outbox uma única vez.
+
+Cada Refund não Cash possui uma `RefundProviderExecution` dedicada, sem reutilizar
+`PaymentProviderExecution`. A intenção e a chave externa estável são persistidas
+antes da chamada de rede. Operações equivalentes a `RefundAsync` e
+`LookupRefundAsync` suportam resultado normalizado, claims, Unknown e
+`ReconciliationRequired`; resultado ambíguo mantém Refund em `Processing` e não
+é repetido cegamente.
+
+O POST exige `Idempotency-Key`; a fingerprint inclui tenant, PaymentAttempt.Id,
+amount e reason normalizado. Transições geram eventos versionados
+`refund-created.v1`, `refund-completed.v1`, `refund-failed.v1` e
+`refund-reconciliation-required.v1`. SoftPOS exige apenas suporte arquitetural,
+capabilities e Fake/Test Provider; provider comercial e hardware não são
+requisitos para concluir a Fase 7.

@@ -5,11 +5,11 @@ using Appizza.Modules.Tables;
 using Appizza.Persistence;
 using Microsoft.EntityFrameworkCore;
 
-namespace Appizza.Api;
+namespace Appizza.Payments.Application;
 
-internal enum PaymentAttemptLifecycleAction { Succeed, Fail, Cancel, Expire, MarkUnknown, ResolveUnknownSuccess, ResolveUnknownFailure }
+internal enum PaymentAttemptLifecycleAction { Succeed, Fail, Cancel, Expire, MarkUnknown, ResolveUnknownSuccess, ResolveUnknownFailure, AwaitingCustomerAction, Processing }
 
-internal sealed class PaymentAttemptLifecycleService(AppizzaDbContext db)
+public sealed class PaymentAttemptLifecycleService(AppizzaDbContext db)
 {
     public Task<PaymentAttempt> SucceedAsync(Guid tenant, Guid attemptId, CancellationToken ct = default) => TransitionAsync(tenant, attemptId, PaymentAttemptLifecycleAction.Succeed, ct);
     public Task<PaymentAttempt> FailAsync(Guid tenant, Guid attemptId, CancellationToken ct = default) => TransitionAsync(tenant, attemptId, PaymentAttemptLifecycleAction.Fail, ct);
@@ -18,6 +18,8 @@ internal sealed class PaymentAttemptLifecycleService(AppizzaDbContext db)
     public Task<PaymentAttempt> MarkUnknownAsync(Guid tenant, Guid attemptId, CancellationToken ct = default) => TransitionAsync(tenant, attemptId, PaymentAttemptLifecycleAction.MarkUnknown, ct);
     public Task<PaymentAttempt> ResolveUnknownSuccessAsync(Guid tenant, Guid attemptId, CancellationToken ct = default) => TransitionAsync(tenant, attemptId, PaymentAttemptLifecycleAction.ResolveUnknownSuccess, ct);
     public Task<PaymentAttempt> ResolveUnknownFailureAsync(Guid tenant, Guid attemptId, CancellationToken ct = default) => TransitionAsync(tenant, attemptId, PaymentAttemptLifecycleAction.ResolveUnknownFailure, ct);
+    public Task<PaymentAttempt> MarkAwaitingCustomerActionAsync(Guid tenant, Guid attemptId, CancellationToken ct = default) => TransitionAsync(tenant, attemptId, PaymentAttemptLifecycleAction.AwaitingCustomerAction, ct);
+    public Task<PaymentAttempt> MarkProcessingAsync(Guid tenant, Guid attemptId, CancellationToken ct = default) => TransitionAsync(tenant, attemptId, PaymentAttemptLifecycleAction.Processing, ct);
 
     private async Task<PaymentAttempt> TransitionAsync(Guid tenant, Guid attemptId, PaymentAttemptLifecycleAction action, CancellationToken ct)
     {
@@ -35,10 +37,14 @@ internal sealed class PaymentAttemptLifecycleService(AppizzaDbContext db)
             PaymentAttemptLifecycleAction.Cancel => PaymentAttemptStatus.Cancelled,
             PaymentAttemptLifecycleAction.Expire => PaymentAttemptStatus.Expired,
             PaymentAttemptLifecycleAction.MarkUnknown => PaymentAttemptStatus.Unknown,
+            PaymentAttemptLifecycleAction.AwaitingCustomerAction => PaymentAttemptStatus.AwaitingCustomerAction,
+            PaymentAttemptLifecycleAction.Processing => PaymentAttemptStatus.Processing,
             _ => throw new InvalidOperationException("PAYMENT_ATTEMPT_INVALID_STATE")
         };
         if (attempt.Status == target) { await tx.CommitAsync(ct); return attempt; }
         if (action == PaymentAttemptLifecycleAction.MarkUnknown && attempt.Status is not (PaymentAttemptStatus.Created or PaymentAttemptStatus.AwaitingCustomerAction or PaymentAttemptStatus.Processing)) throw new InvalidOperationException("PAYMENT_ATTEMPT_INVALID_STATE");
+        if (action == PaymentAttemptLifecycleAction.AwaitingCustomerAction && attempt.Status is not (PaymentAttemptStatus.Created or PaymentAttemptStatus.AwaitingCustomerAction or PaymentAttemptStatus.Processing)) throw new InvalidOperationException("PAYMENT_ATTEMPT_INVALID_STATE");
+        if (action == PaymentAttemptLifecycleAction.Processing && attempt.Status is not (PaymentAttemptStatus.Created or PaymentAttemptStatus.AwaitingCustomerAction or PaymentAttemptStatus.Processing)) throw new InvalidOperationException("PAYMENT_ATTEMPT_INVALID_STATE");
         if (action is PaymentAttemptLifecycleAction.ResolveUnknownSuccess or PaymentAttemptLifecycleAction.ResolveUnknownFailure && attempt.Status != PaymentAttemptStatus.Unknown) throw new InvalidOperationException("PAYMENT_ATTEMPT_INVALID_STATE");
         if (action == PaymentAttemptLifecycleAction.Cancel && attempt.Status == PaymentAttemptStatus.Approved) throw new InvalidOperationException("PAYMENT_ATTEMPT_INVALID_STATE");
         if (attempt.Status is PaymentAttemptStatus.Approved or PaymentAttemptStatus.Declined or PaymentAttemptStatus.Cancelled or PaymentAttemptStatus.Expired) throw new InvalidOperationException("PAYMENT_ATTEMPT_INVALID_STATE");

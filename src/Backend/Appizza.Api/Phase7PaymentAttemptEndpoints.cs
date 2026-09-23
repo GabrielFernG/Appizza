@@ -3,6 +3,7 @@ using Appizza.Modules.Devices;
 using Appizza.Modules.Payments;
 using Appizza.Modules.Tables;
 using Appizza.Persistence;
+using Appizza.Payments.Application;
 using Microsoft.EntityFrameworkCore;
 
 namespace Appizza.Api;
@@ -12,7 +13,34 @@ public static class Phase7PaymentAttemptEndpoints
     public static IEndpointRouteBuilder MapPhase7PaymentAttemptEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/v1/table-device/payments/attempts", Create).RequireAuthorization();
+        app.MapPost("/api/v1/table-device/payments/attempts/{attemptId:guid}/process", Process).RequireAuthorization();
         return app;
+    }
+
+    private static async Task<IResult> Process(Guid attemptId, ClaimsPrincipal principal, AppizzaDbContext db, PaymentProcessingService processing, CancellationToken ct)
+    {
+        if (!principal.IsTokenType("device")) return Problem(403, "INVALID_TOKEN_TYPE");
+        var tenant = principal.RequiredGuid("establishment_id");
+        var deviceId = principal.RequiredGuid("sub");
+        var device = await db.Set<Device>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == deviceId && x.EstablishmentId == tenant, ct);
+        if (device is null) return Results.NotFound();
+        if (device.Status == "blocked") return Problem(403, "DEVICE_BLOCKED");
+        if (device.Status != "active" || device.CredentialVersion.ToString(System.Globalization.CultureInfo.InvariantCulture) != principal.FindFirstValue("credential_version")) return Problem(403, "DEVICE_CREDENTIAL_REVOKED");
+        var binding = await db.Set<DeviceTableBinding>().AsNoTracking().SingleOrDefaultAsync(x => x.DeviceId == deviceId && x.UnboundAt == null, ct);
+        var attempt = await db.Set<PaymentAttempt>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == attemptId && x.EstablishmentId == tenant, ct);
+        if (attempt is null) return Results.NotFound();
+        var session = await db.Set<TableSession>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == attempt.TableSessionId && x.EstablishmentId == tenant, ct);
+        if (binding is null || session is null || binding.DiningTableId != session.DiningTableId) return Results.NotFound();
+        if (attempt.Method == PaymentMethod.Cash) return Problem(409, "CASH_DOES_NOT_USE_PROVIDER");
+        if (attempt.Status is PaymentAttemptStatus.Approved or PaymentAttemptStatus.Declined or PaymentAttemptStatus.Cancelled or PaymentAttemptStatus.Expired or PaymentAttemptStatus.Unknown) return Problem(409, "PAYMENT_ATTEMPT_INVALID_STATE");
+        try
+        {
+            var result = await processing.StartAsync(tenant, attemptId, ct);
+            await processing.ApplyResultAsync(tenant, attemptId, result, ct);
+            return Results.Ok(new { attemptId, status = result.Status.Trim().ToLowerInvariant() });
+        }
+        catch (InvalidOperationException ex) when (ex.Message is "PAYMENT_ATTEMPT_NOT_FOUND") { return Results.NotFound(); }
+        catch (InvalidOperationException ex) when (ex.Message is "CASH_DOES_NOT_USE_PROVIDER" or "PAYMENT_ATTEMPT_INVALID_STATE") { return Problem(409, ex.Message); }
     }
 
     private static async Task<IResult> Create(PaymentAttemptRequest request, HttpRequest http, ClaimsPrincipal principal, PaymentAttemptReservationService service, AppizzaDbContext db, CancellationToken ct)

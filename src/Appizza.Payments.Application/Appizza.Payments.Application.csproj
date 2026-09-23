@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\BuildingBlocks\Appizza.Persistence\Appizza.Persistence.csproj" />
+    <ProjectReference Include="..\Modules\Appizza.Modules.Payments\Appizza.Modules.Payments.csproj" />
+    <Compile Include="..\Backend\Appizza.Api\PaymentAttemptLifecycleService.cs" Link="PaymentAttemptLifecycleService.cs" />
+    <Compile Include="..\Backend\Appizza.Api\PaymentProcessingService.cs" Link="PaymentProcessingService.cs" />
+  </ItemGroup>
+</Project>

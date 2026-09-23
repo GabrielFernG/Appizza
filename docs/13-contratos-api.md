@@ -935,7 +935,10 @@ Idempotency-Key: obrigatório.
 ## POST `/api/v1/payments/{paymentId}/refunds`
 
 Auth: funcionário.
-Permissão: `payments.refund.create`.
+Permissão: `payments.refund`.
+
+`paymentId` é o `PaymentAttempt.Id` aprovado, localizado no tenant da claim
+`establishment_id`. Table Device não pode iniciar Refund.
 
 Request:
 
@@ -946,14 +949,44 @@ Request:
 }
 ```
 
+`amount` deve ser maior que zero e `reason` é obrigatório. `Idempotency-Key` é
+obrigatório; a fingerprint inclui tenant, PaymentAttempt.Id, amount e reason
+normalizado. Não há `expectedVersion`; a concorrência usa `SELECT ... FOR UPDATE`
+no PaymentAttempt.
+
 Valida:
-- pagamento elegível;
-- soma de refunds <= approved amount;
-- provedor suporta operação;
-- aprovação adicional conforme perfil.
+- PaymentAttempt com status `Approved`;
+- `AvailableToRefundAmount` suficiente, considerando refunds `Completed` e
+  reservas `Created`/`Processing`;
+- `reason` obrigatório e amount positivo;
+- permission, tenant e idempotência conforme este contrato.
 
 Response:
-refund pending/completed conforme provedor.
+HTTP 202 Accepted com refundId, paymentAttemptId, amount, reason, status,
+completedRefundedAmount, inFlightRefundAmount e availableToRefundAmount.
+
+Erros: `PAYMENT_NOT_FOUND` (404, inclusive foreign tenant),
+`INSUFFICIENT_PERMISSION` (403), `REFUND_REASON_REQUIRED` ou
+`REFUND_AMOUNT_INVALID` (400), `REFUND_PAYMENT_NOT_APPROVED`,
+`REFUND_AMOUNT_EXCEEDS_AVAILABLE` ou `REFUND_INVALID_STATE` (409), e
+`IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST` (409).
+
+## POST `/api/v1/payments/refunds/{refundId}/confirm-cash`
+
+Confirma a devolução Cash. Exige funcionário autenticado, tenant da claim,
+`payments.refund` e `Idempotency-Key`. O Refund deve ser Cash e estar em
+`Created`; a transição é `Created -> Completed`. Replays não duplicam efeitos.
+Refund não Cash retorna `409 REFUND_NOT_CASH`; Refund `Failed`/`Cancelled` retorna
+`409 REFUND_INVALID_STATE`.
+
+Refunds não Cash usam `RefundProviderExecution` dedicada, com chave externa
+estável, claim/lease, outcome normalizado e reconciliação. A chamada externa
+ocorre após o commit da intenção; `Unknown` mantém Refund `Processing` e é
+resolvido por `LookupRefundAsync`.
+
+O read model administrativo deve expor valor original, resumo completed/in-flight/
+available e histórico de refunds. Operations inicia/confirma Refund; Table Device
+não cria nem confirma Refund.
 
 ---
 
@@ -1319,6 +1352,37 @@ O MVP não possui `PaymentParticipant`, `participantId`, allocation de participa
 # Contratos implementados de PaymentAttempt (Macro 7-A2)
 
 `POST /api/v1/table-device/payments/attempts` requer Bearer token de dispositivo e `Idempotency-Key` UUID. O request usa `tableSessionId`, `paymentPlanId`, `allocationIds` e `paymentMethod` (`cash`, `pix`, `credit`, `debit`, `soft_pos`). O servidor valida tenant, binding, sessão, plano físico e allocations; calcula o valor autoritativo e cria a reserva. Chave repetida com intenção diferente retorna `409` e `IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST`.
+
+### Finalização de Closing — Operations
+
+`POST /api/v1/operations/sessions/{sessionId}/closing/finalize` exige usuário
+autenticado, a permissão `closing.finalize` e o header `Idempotency-Key`. O tenant
+é derivado exclusivamente de `establishment_id`; `establishmentId` não é aceito
+no request. O corpo é `{ "expectedVersion": <long> }`.
+
+A operação só é elegível quando a sessão do tenant está em `paid`, a versão
+corresponde, `outstandingAmount` e `reservedAmount` são zero, não há attempts em
+`Created`, `AwaitingCustomerAction`, `Processing` ou `Unknown`, não há executions
+em `Pending`, `Processing`, `AwaitingCustomerAction` ou `Unknown`, e nenhuma
+execution possui `ReconciliationRequired == true`. O endpoint não chama provedor,
+não reconcilia, não confirma cash e não executa retry.
+
+Sucesso retorna HTTP 200 com a representação autoritativa atualizada (`status`
+`closed` e nova versão). Na mesma transação são persistidos `paid -> closed`, a
+versão, audit `closing.finalize`, o resultado de idempotência e o Outbox
+`session-closing-finalized.v1`, usando o envelope de lifecycle existente. Não há
+mutação de DiningTable, PaymentPlan, allocations, attempts, executions, claims ou
+totais financeiros. A limpeza/liberação da mesa segue seu fluxo próprio.
+
+Erros: 403 `INSUFFICIENT_PERMISSION`; 404 para sessão inexistente ou de outro
+tenant; 409 `CONCURRENCY_CONFLICT` para versão obsoleta; 409
+`SESSION_INVALID_STATE` para estado de origem inválido; 409
+`CLOSING_FINANCIAL_STATE_INCOMPLETE` para saldo pendente ou reserva; 409
+`CLOSING_PAYMENT_PROCESSING_INCOMPLETE` para processamento não terminal ou
+reconciliação pendente; e 409
+`IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST` para chave reutilizada com
+request canônico diferente. Replay idêntico retorna HTTP 200 e o resultado
+persistido sem duplicar efeitos, audit, Outbox ou incremento de versão.
 
 `POST /api/v1/payments/attempts/{attemptId}/confirm-cash` requer funcionário ativo, tenant correto, permissão `payments.confirm_cash` e `Idempotency-Key`. Somente attempts Cash podem ser confirmados; a confirmação aprova atomicamente e repetições são idempotentes. Tokens de dispositivo, recursos estrangeiros e estados inválidos são rejeitados sem mutação financeira.
 
