@@ -11,6 +11,9 @@ public static class TableRuntime
     public static LocalStateDatabase Database { get; } = new(Path.Combine(FileSystem.AppDataDirectory, "appizza-table-v1.db3"));
     public static MediaCacheService MediaCache { get; } = new(Database, Path.Combine(FileSystem.CacheDirectory, "menu-media"), new MediaCacheOptions(), new SystemFreeSpaceProvider(), () => DateTime.UtcNow);
     public static LocalContext? Context { get; set; }
+    public static Guid PaymentPlanIdempotencyKey { get; } = Guid.NewGuid();
+    public static Guid PaymentAttemptIdempotencyKey { get; private set; } = Guid.NewGuid();
+    public static Guid BeginPaymentAttemptAction() => PaymentAttemptIdempotencyKey = Guid.NewGuid();
     public static MenuPresentation? Menu { get; set; }
     public static MenuProduct? SelectedProduct { get; set; }
     public static bool IsOnline => Connectivity.Current.NetworkAccess == NetworkAccess.Internet;

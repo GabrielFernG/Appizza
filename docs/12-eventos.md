@@ -828,3 +828,21 @@ Antes de adicionar evento:
 ## Nota normativa da Fase 6
 
 Os eventos de Promotions permanecem especificados quanto a producer, Outbox e consumidores, mas sua implementação fica condicionada às decisões de elegibilidade e semântica de `fixed_amount` registradas em `docs/08-promocoes-comunicacao.md`. Não publicar eventos de aplicação financeira antes dessa definição.
+## Eventos normativos da Fase 7
+
+Eventos de Closing/Payments são fatos versionados, com eventId, aggregateId, aggregateVersion, establishmentId, correlationId, causationId e timestamps UTC. Dados sensíveis não entram no payload.
+
+| EventType | Producer | Outbox | Consumers/SignalR |
+|---|---|---:|---|
+| `session-closing-started.v1` | Closing | sim | Operations/Table invalidation |
+| `session-closing-cancelled.v1` | Closing | sim | Operations/Table invalidation |
+| `payment-attempt-created.v1` | Payments | sim | Operations/Table invalidation |
+| `payment-approved.v1` | Payments | sim | session totals/read models |
+| `payment-declined.v1` | Payments | sim | session totals/read models |
+| `payment-unknown.v1` | Payments | sim | Operations/Table invalidation |
+| `session-partially-paid.v1` | Payments/Closing | sim | Operations/Table invalidation |
+| `session-paid.v1` | Payments/Closing | sim | Operations/Table invalidation |
+| `session-closed.v1` | Closing | sim | Operations invalidation |
+| `payment-refunded.v1` | Payments | sim | Operations/Table invalidation |
+
+Inbox só é obrigatório quando houver consumer material. SignalR é somente invalidação; GET permanece fonte autoritativa.

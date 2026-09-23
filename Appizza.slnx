@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/src/" />
+  <Folder Name="/src/App/">
+    <Project Path="src/Appizza.Payments.Application/Appizza.Payments.Application.csproj" />
+  </Folder>
   <Folder Name="/src/Backend/">
     <Project Path="src/Backend/Appizza.Api/Appizza.Api.csproj" />
     <Project Path="src/Backend/Appizza.Worker/Appizza.Worker.csproj" />

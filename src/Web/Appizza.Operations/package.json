@@ -11,7 +11,9 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:refunds": "playwright test e2e/refunds"
   },
   "dependencies": {
     "@microsoft/signalr": "^8.0.17",
@@ -22,6 +24,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
+    "@playwright/test": "^1.63.0",
     "@types/node": "22.20.1",
     "@vitejs/plugin-vue": "6.0.8",
     "@vue/test-utils": "2.4.11",

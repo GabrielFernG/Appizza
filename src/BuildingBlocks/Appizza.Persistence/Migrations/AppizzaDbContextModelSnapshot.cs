@@ -28,6 +28,72 @@ namespace Appizza.Persistence.Migrations
 
             modelBuilder.HasSequence("table_session_number_seq", "tables");
 
+            modelBuilder.Entity("Appizza.Modules.Auditing.AuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid?>("ActorDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_device_id");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<Guid>("AggregateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("aggregate_id");
+
+                    b.Property<string>("AggregateType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("aggregate_type");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("outcome");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("reason");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EstablishmentId", "AggregateType", "AggregateId", "OccurredAt")
+                        .HasDatabaseName("ix_audit_entry_establishment_id_aggregate_type_aggregate_id_oc~");
+
+                    b.ToTable("audit_entry", "auditing", t =>
+                        {
+                            t.HasCheckConstraint("ck_audit_entry_actor", "not (actor_user_id is not null and actor_device_id is not null)");
+                        });
+                });
+
             modelBuilder.Entity("Appizza.Modules.Catalog.CatalogRevision", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4402,6 +4468,548 @@ namespace Appizza.Persistence.Migrations
                     b.ToTable("order_status_history", "ordering");
                 });
 
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTimeOffset?>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_at");
+
+                    b.Property<Guid?>("CausationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("causation_id");
+
+                    b.Property<Guid?>("CorrelationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("method");
+
+                    b.Property<Guid?>("PaymentPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_plan_id");
+
+                    b.Property<long?>("PaymentPlanVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("payment_plan_version");
+
+                    b.Property<string>("PlanSnapshot")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("plan_snapshot");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ProviderReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("provider_reference");
+
+                    b.Property<decimal>("ReservedAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("reserved_amount");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TableSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("table_session_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentPlanId")
+                        .HasDatabaseName("ix_payment_attempt_payment_plan_id");
+
+                    b.HasIndex("TableSessionId")
+                        .HasDatabaseName("ix_payment_attempt_table_session_id");
+
+                    b.HasIndex("EstablishmentId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payment_attempt_establishment_id_idempotency_key")
+                        .HasFilter("idempotency_key is not null");
+
+                    b.HasIndex("Provider", "ProviderReference")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payment_attempt_provider_provider_reference")
+                        .HasFilter("provider_reference is not null");
+
+                    b.HasIndex("EstablishmentId", "TableSessionId", "Status")
+                        .HasDatabaseName("ix_payment_attempt_establishment_id_table_session_id_status");
+
+                    b.ToTable("payment_attempt", "payments", t =>
+                        {
+                            t.HasCheckConstraint("ck_payment_attempt_amounts", "amount >= 0 and reserved_amount >= 0");
+
+                            t.HasCheckConstraint("ck_payment_attempt_method", "method in ('pix','cash','credit','debit','soft_pos')");
+
+                            t.HasCheckConstraint("ck_payment_attempt_status", "status in ('created','awaiting_customer_action','processing','approved','declined','expired','cancelled','unknown')");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentAttemptAllocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid>("PaymentAttemptId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_attempt_id");
+
+                    b.Property<Guid>("PaymentPlanAllocationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_plan_allocation_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentPlanAllocationId")
+                        .HasDatabaseName("ix_payment_attempt_allocation_payment_plan_allocation_id");
+
+                    b.HasIndex("PaymentAttemptId", "PaymentPlanAllocationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payment_attempt_allocation_payment_attempt_id_payment_plan_~");
+
+                    b.ToTable("payment_attempt_allocation", "payments");
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<Guid>("LogicalPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("logical_plan_id");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("mode");
+
+                    b.Property<Guid>("TableSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("table_session_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TableSessionId")
+                        .HasDatabaseName("ix_payment_plan_table_session_id");
+
+                    b.HasIndex("EstablishmentId", "TableSessionId", "Id")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payment_plan_establishment_id_table_session_id_id");
+
+                    b.HasIndex("EstablishmentId", "TableSessionId", "Version")
+                        .HasDatabaseName("ix_payment_plan_establishment_id_table_session_id_version");
+
+                    b.HasIndex("EstablishmentId", "TableSessionId", "LogicalPlanId", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ux_payment_plan_logical_version");
+
+                    b.ToTable("payment_plan", "payments", t =>
+                        {
+                            t.HasCheckConstraint("ck_payment_plan_mode", "mode in ('total','equal_split','by_participant','by_item','custom_amount')");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentPlanAllocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<Guid?>("OrderItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_item_id");
+
+                    b.Property<Guid?>("ParticipantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("participant_id");
+
+                    b.Property<Guid>("PaymentPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_plan_id");
+
+                    b.Property<int>("StableOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("stable_order");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EstablishmentId")
+                        .HasDatabaseName("ix_payment_plan_allocation_establishment_id");
+
+                    b.HasIndex("PaymentPlanId", "StableOrder")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payment_plan_allocation_payment_plan_id_stable_order");
+
+                    b.ToTable("payment_plan_allocation", "payments", t =>
+                        {
+                            t.HasCheckConstraint("ck_payment_plan_allocation_amount", "amount >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentProviderExecution", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt_count");
+
+                    b.Property<Guid?>("ClaimedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("claimed_by");
+
+                    b.Property<DateTimeOffset?>("ClaimedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("claimed_until");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<string>("LastErrorClassification")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("last_error_classification");
+
+                    b.Property<bool>("LifecycleApplied")
+                        .HasColumnType("boolean")
+                        .HasColumnName("lifecycle_applied");
+
+                    b.Property<string>("NormalizedOutcome")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("normalized_outcome");
+
+                    b.Property<Guid>("PaymentAttemptId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_attempt_id");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ProviderIdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("provider_idempotency_key");
+
+                    b.Property<string>("ProviderReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("provider_reference");
+
+                    b.Property<bool>("ReconciliationRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("reconciliation_required");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentAttemptId")
+                        .HasDatabaseName("ix_payment_provider_execution_payment_attempt_id");
+
+                    b.HasIndex("EstablishmentId", "PaymentAttemptId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payment_provider_execution_establishment_id_payment_attempt~");
+
+                    b.HasIndex("EstablishmentId", "Status", "ClaimedUntil")
+                        .HasDatabaseName("ix_payment_provider_execution_establishment_id_status_claimed_~");
+
+                    b.ToTable("payment_provider_execution", "payments", t =>
+                        {
+                            t.HasCheckConstraint("ck_payment_provider_execution_status", "status in ('pending','processing','awaiting_customer_action','unknown','outcome_observed','completed','terminal_failure')");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.Refund", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<Guid>("PaymentAttemptId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_attempt_id");
+
+                    b.Property<string>("ProviderReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("provider_reference");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentAttemptId")
+                        .HasDatabaseName("ix_refund_payment_attempt_id");
+
+                    b.HasIndex("EstablishmentId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_refund_establishment_id_idempotency_key")
+                        .HasFilter("idempotency_key is not null");
+
+                    b.HasIndex("EstablishmentId", "PaymentAttemptId")
+                        .HasDatabaseName("ix_refund_establishment_id_payment_attempt_id");
+
+                    b.ToTable("refund", "payments", t =>
+                        {
+                            t.HasCheckConstraint("ck_refund_amount", "amount >= 0");
+
+                            t.HasCheckConstraint("ck_refund_status", "status in ('created','processing','completed','failed','cancelled')");
+                        });
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.RefundProviderExecution", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempt_count");
+
+                    b.Property<Guid?>("ClaimedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("claimed_by");
+
+                    b.Property<DateTimeOffset?>("ClaimedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("claimed_until");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("EstablishmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("establishment_id");
+
+                    b.Property<string>("LastErrorClassification")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("last_error_classification");
+
+                    b.Property<bool>("LifecycleApplied")
+                        .HasColumnType("boolean")
+                        .HasColumnName("lifecycle_applied");
+
+                    b.Property<string>("NormalizedOutcome")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("normalized_outcome");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ProviderIdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("provider_idempotency_key");
+
+                    b.Property<string>("ProviderReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("provider_reference");
+
+                    b.Property<bool>("ReconciliationRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("reconciliation_required");
+
+                    b.Property<Guid>("RefundId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("refund_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RefundId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_refund_provider_execution_refund_id");
+
+                    b.HasIndex("EstablishmentId", "RefundId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_refund_provider_execution_establishment_id_refund_id");
+
+                    b.HasIndex("EstablishmentId", "Provider", "ProviderIdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_refund_provider_execution_establishment_id_provider_provide~");
+
+                    b.HasIndex("EstablishmentId", "Status", "ClaimedUntil")
+                        .HasDatabaseName("ix_refund_provider_execution_establishment_id_status_claimed_u~");
+
+                    b.ToTable("refund_provider_execution", "payments", t =>
+                        {
+                            t.HasCheckConstraint("ck_refund_provider_execution_status", "status in ('pending','processing','unknown','outcome_observed','completed','terminal_failure')");
+                        });
+                });
+
             modelBuilder.Entity("Appizza.Modules.Promotions.Promotion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5997,6 +6605,84 @@ namespace Appizza.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentAttempt", b =>
+                {
+                    b.HasOne("Appizza.Modules.Payments.PaymentPlan", null)
+                        .WithMany()
+                        .HasForeignKey("PaymentPlanId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Appizza.Modules.Tables.TableSession", null)
+                        .WithMany()
+                        .HasForeignKey("TableSessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentAttemptAllocation", b =>
+                {
+                    b.HasOne("Appizza.Modules.Payments.PaymentAttempt", "PaymentAttempt")
+                        .WithMany("Allocations")
+                        .HasForeignKey("PaymentAttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Appizza.Modules.Payments.PaymentPlanAllocation", "PaymentPlanAllocation")
+                        .WithMany()
+                        .HasForeignKey("PaymentPlanAllocationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PaymentAttempt");
+
+                    b.Navigation("PaymentPlanAllocation");
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentPlan", b =>
+                {
+                    b.HasOne("Appizza.Modules.Tables.TableSession", null)
+                        .WithMany()
+                        .HasForeignKey("TableSessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentPlanAllocation", b =>
+                {
+                    b.HasOne("Appizza.Modules.Payments.PaymentPlan", null)
+                        .WithMany("Allocations")
+                        .HasForeignKey("PaymentPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentProviderExecution", b =>
+                {
+                    b.HasOne("Appizza.Modules.Payments.PaymentAttempt", null)
+                        .WithMany()
+                        .HasForeignKey("PaymentAttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.Refund", b =>
+                {
+                    b.HasOne("Appizza.Modules.Payments.PaymentAttempt", null)
+                        .WithMany()
+                        .HasForeignKey("PaymentAttemptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.RefundProviderExecution", b =>
+                {
+                    b.HasOne("Appizza.Modules.Payments.Refund", null)
+                        .WithOne()
+                        .HasForeignKey("Appizza.Modules.Payments.RefundProviderExecution", "RefundId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Appizza.Modules.Promotions.PromotionVersion", b =>
                 {
                     b.HasOne("Appizza.Modules.Promotions.Promotion", null)
@@ -6060,6 +6746,16 @@ namespace Appizza.Persistence.Migrations
                         .HasForeignKey("TableSessionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentAttempt", b =>
+                {
+                    b.Navigation("Allocations");
+                });
+
+            modelBuilder.Entity("Appizza.Modules.Payments.PaymentPlan", b =>
+                {
+                    b.Navigation("Allocations");
                 });
 #pragma warning restore 612, 618
         }

@@ -97,6 +97,12 @@ public partial class MainPage : ContentPage
         }
     }
 
+    private async void OnOpenPayments(object? sender, EventArgs args)
+    {
+        if (TableRuntime.Context is null) return;
+        await Shell.Current.GoToAsync(nameof(PaymentPage));
+    }
+
     private static async Task<T> PostAsync<T>(string path, object body)
     {
         var response = await Http.PostAsJsonAsync(path, body);

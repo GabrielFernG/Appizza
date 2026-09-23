@@ -85,7 +85,10 @@ public sealed class PostgreSqlFoundationTests
         Assert.Contains("ordering.order_item_combo_selection", tables);
         Assert.Contains("kitchen.station", tables);
         Assert.Contains("kitchen.production_item", tables);
-        Assert.DoesNotContain(tables, table => table.StartsWith("payments.", StringComparison.Ordinal));
+        Assert.Contains("payments.payment_plan", tables);
+        Assert.Contains("payments.payment_plan_allocation", tables);
+        Assert.Contains("payments.payment_attempt", tables);
+        Assert.Contains("payments.refund", tables);
 
         var establishment = new Establishment
         {

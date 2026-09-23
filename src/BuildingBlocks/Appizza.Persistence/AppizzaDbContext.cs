@@ -9,6 +9,8 @@ using Appizza.Modules.Ordering;
 using Appizza.Modules.Kitchen;
 using Appizza.Modules.Promotions;
 using Appizza.Modules.Communications;
+using Appizza.Modules.Payments;
+using Appizza.Modules.Auditing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using System.Text.RegularExpressions;
@@ -31,6 +33,13 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
     public DbSet<PromotionVersion> PromotionVersions => Set<PromotionVersion>();
     public DbSet<PromotionApplication> PromotionApplications => Set<PromotionApplication>();
     public DbSet<Communication> Communications => Set<Communication>();
+    public DbSet<PaymentPlan> PaymentPlans => Set<PaymentPlan>();
+    public DbSet<PaymentPlanAllocation> PaymentPlanAllocations => Set<PaymentPlanAllocation>();
+    public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
+    public DbSet<PaymentProviderExecution> PaymentProviderExecutions => Set<PaymentProviderExecution>();
+    public DbSet<Refund> Refunds => Set<Refund>();
+    public DbSet<RefundProviderExecution> RefundProviderExecutions => Set<RefundProviderExecution>();
+    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -43,6 +52,8 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MediaAssetConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(PromotionConfiguration).Assembly);
         ConfigureCommunications(modelBuilder);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(PaymentPlanConfiguration).Assembly);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(AuditEntryConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CartSimulationConfiguration).Assembly);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(StationConfiguration).Assembly);
         modelBuilder.HasSequence<long>("table_session_number_seq", "tables");
@@ -76,6 +87,11 @@ public sealed class AppizzaDbContext(DbContextOptions<AppizzaDbContext> options)
         modelBuilder.Entity<DiningTable>().HasOne<Sector>().WithMany().HasForeignKey(x => x.SectorId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<DeviceTableBinding>().HasOne<DiningTable>().WithMany().HasForeignKey(x => x.DiningTableId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<TableSession>().HasOne<Establishment>().WithMany().HasForeignKey(x => x.EstablishmentId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PaymentPlan>().HasOne<TableSession>().WithMany().HasForeignKey(x => x.TableSessionId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PaymentAttempt>().HasOne<TableSession>().WithMany().HasForeignKey(x => x.TableSessionId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PaymentAttempt>().HasOne<PaymentPlan>().WithMany().HasForeignKey(x => x.PaymentPlanId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PaymentProviderExecution>().HasOne<PaymentAttempt>().WithMany().HasForeignKey(x => x.PaymentAttemptId).OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<Refund>().HasOne<PaymentAttempt>().WithMany().HasForeignKey(x => x.PaymentAttemptId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<TableSession>().HasOne<DiningTable>().WithMany().HasForeignKey(x => x.DiningTableId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<SessionCustomerIdentification>().HasOne<TableSession>().WithMany().HasForeignKey(x => x.TableSessionId).OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<DeliveryConfirmation>().HasOne<ProductionItem>().WithMany().HasForeignKey(x => x.ProductionItemId).OnDelete(DeleteBehavior.Restrict);
